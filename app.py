@@ -155,15 +155,21 @@ def blank_sentence(example: str, word: str) -> str:
     return pattern.sub("_____", example, count=1) if pattern.search(example) else f"_____ {example}"
 
 
-def render_card(row) -> None:
+def render_card(row, show_answer: bool = True) -> None:
+    if show_answer:
+        answer_html = f"""
+      <div class="meaning">{esc(row['meaning_ja'])}</div>
+      <div class="example-ja">{esc(row['example_ja'])}</div>
+        """
+    else:
+        answer_html = '<div class="answer-placeholder">日本語訳はまだ隠れています。</div>'
     st.markdown(f"""
     <div class="word-card">
       <div><span class="pill">{esc(row['category'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
       <div class="word-title">{esc(row['word'])}</div>
       <div class="pronunciation">{esc(row['pronunciation'])}</div>
-      <div class="meaning">{esc(row['meaning_ja'])}</div>
       <div class="example-en">{esc(row['example_en'])}</div>
-      <div class="example-ja">{esc(row['example_ja'])}</div>
+      {answer_html}
       <div class="stats-line">正解 {int(row['correct_count'])} ・ 不正解 {int(row['wrong_count'])} ・ 最終 {esc(row['last_studied'] or '-')}</div>
     </div>
     """, unsafe_allow_html=True)
@@ -193,25 +199,39 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
 
 def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
+    reveal_key = "study_answer_visible"
+    viewed_key = "study_viewed_id"
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id(df)
+        st.session_state[reveal_key] = False
     row = row_by_id(df, st.session_state[key])
     if row is None:
         st.info("単語がありません。")
         return df
+    if st.session_state.get(viewed_key) != int(row["id"]):
+        st.session_state[viewed_key] = int(row["id"])
+        st.session_state[reveal_key] = False
+    show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
-    render_card(row)
+    render_card(row, show_answer=show_answer)
+    if not show_answer:
+        if st.button("意味を表示", type="primary", width="stretch"):
+            st.session_state[reveal_key] = True
+            st.rerun()
     c1, c2 = st.columns(2)
     if c1.button("覚えた", type="primary", width="stretch"):
         df = update_stats(df, int(row["id"]), True)
         st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[reveal_key] = False
         st.rerun()
     if c2.button("苦手", width="stretch"):
         df = update_stats(df, int(row["id"]), False)
         st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[reveal_key] = False
         st.rerun()
     if st.button("次のカード", width="stretch"):
         st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[reveal_key] = False
         st.rerun()
     return df
 
@@ -375,6 +395,7 @@ def css() -> None:
       .pronunciation,.example-ja,.stats-line,.hint-line { color:#596579; font-size:.95rem; line-height:1.55; margin-top:.5rem; overflow-wrap:anywhere; }
       .meaning { color:#182033; font-size:1.15rem; font-weight:700; margin-top:1rem; overflow-wrap:anywhere; }
       .example-en { background:#f7f9fc; border-left:4px solid #2f6fed; color:#1f2937; margin-top:1rem; padding:.8rem; line-height:1.55; overflow-wrap:anywhere; }
+      .answer-placeholder { background:#f7f9fc; border:1px dashed #cbd5e1; border-radius:8px; color:#687385; font-size:.95rem; margin-top:.85rem; padding:.75rem; text-align:center; }
       .quiz-label { color:#596579; font-size:.82rem; font-weight:700; }
       .quiz-prompt { color:#111827; font-size:1.25rem; font-weight:800; line-height:1.35; overflow-wrap:anywhere; }
       input, textarea, select { background:#fff!important; color:#172033!important; -webkit-text-fill-color:#172033!important; caret-color:#172033!important; border-color:#cbd5e1!important; font-size:16px!important; }
