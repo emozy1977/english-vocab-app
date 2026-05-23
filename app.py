@@ -10,19 +10,7 @@ import pandas as pd
 import streamlit as st
 
 DATA_FILE = Path(__file__).with_name("words.csv")
-COLUMNS = [
-    "id",
-    "word",
-    "pronunciation",
-    "meaning_ja",
-    "example_en",
-    "example_ja",
-    "category",
-    "difficulty",
-    "correct_count",
-    "wrong_count",
-    "last_studied",
-]
+COLUMNS = ["id", "word", "pronunciation", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]
 COUNT_COLUMNS = ["correct_count", "wrong_count"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
@@ -72,10 +60,10 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         df = pd.DataFrame(SAMPLE_WORDS, columns=COLUMNS)
     df["id"] = pd.to_numeric(df["id"], errors="coerce")
-    next_id = int(df["id"].max()) + 1 if df["id"].notna().any() else 1
+    next_word_id = int(df["id"].max()) + 1 if df["id"].notna().any() else 1
     for idx in df[df["id"].isna()].index:
-        df.at[idx, "id"] = next_id
-        next_id += 1
+        df.at[idx, "id"] = next_word_id
+        next_word_id += 1
     df["id"] = df["id"].astype(int)
     for col in COUNT_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
@@ -168,20 +156,17 @@ def blank_sentence(example: str, word: str) -> str:
 
 
 def render_card(row) -> None:
-    st.markdown(
-        f"""
-        <div class="word-card">
-          <div><span class="pill">{esc(row['category'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
-          <div class="word-title">{esc(row['word'])}</div>
-          <div class="pronunciation">{esc(row['pronunciation'])}</div>
-          <div class="meaning">{esc(row['meaning_ja'])}</div>
-          <div class="example-en">{esc(row['example_en'])}</div>
-          <div class="example-ja">{esc(row['example_ja'])}</div>
-          <div class="stats-line">正解 {int(row['correct_count'])} ・ 不正解 {int(row['wrong_count'])} ・ 最終 {esc(row['last_studied'] or '-')}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.markdown(f"""
+    <div class="word-card">
+      <div><span class="pill">{esc(row['category'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
+      <div class="word-title">{esc(row['word'])}</div>
+      <div class="pronunciation">{esc(row['pronunciation'])}</div>
+      <div class="meaning">{esc(row['meaning_ja'])}</div>
+      <div class="example-en">{esc(row['example_en'])}</div>
+      <div class="example-ja">{esc(row['example_ja'])}</div>
+      <div class="stats-line">正解 {int(row['correct_count'])} ・ 不正解 {int(row['wrong_count'])} ・ 最終 {esc(row['last_studied'] or '-')}</div>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 def register_screen(df: pd.DataFrame) -> pd.DataFrame:
@@ -311,12 +296,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
 
     existing = ", ".join(df["word"].astype(str).tolist()[:500])
     prompt = f"Generate {count} useful English vocabulary entries for a Japanese learner. Do not include these words: {existing}. Category hint: {category or 'any practical category'}. Difficulty hint: {difficulty}. Return Japanese meanings and translations."
-    parsed = OpenAI(api_key=api_key).responses.parse(
-        model=model or DEFAULT_AI_MODEL,
-        instructions="You are an English vocabulary coach for Japanese learners.",
-        input=prompt,
-        text_format=Batch,
-    ).output_parsed
+    parsed = OpenAI(api_key=api_key).responses.parse(model=model or DEFAULT_AI_MODEL, instructions="You are an English vocabulary coach for Japanese learners.", input=prompt, text_format=Batch).output_parsed
     existing_set = set(df["word"].astype(str).str.lower().str.strip())
     rows = []
     added = []
@@ -397,10 +377,12 @@ def css() -> None:
       .example-en { background:#f7f9fc; border-left:4px solid #2f6fed; color:#1f2937; margin-top:1rem; padding:.8rem; line-height:1.55; overflow-wrap:anywhere; }
       .quiz-label { color:#596579; font-size:.82rem; font-weight:700; }
       .quiz-prompt { color:#111827; font-size:1.25rem; font-weight:800; line-height:1.35; overflow-wrap:anywhere; }
+      input, textarea, select { background:#fff!important; color:#172033!important; -webkit-text-fill-color:#172033!important; caret-color:#172033!important; border-color:#cbd5e1!important; font-size:16px!important; }
+      input::placeholder, textarea::placeholder { color:#8a94a6!important; -webkit-text-fill-color:#8a94a6!important; opacity:1!important; }
+      label, label *, div[data-testid="stWidgetLabel"], div[data-testid="stWidgetLabel"] * { color:#172033!important; }
       div.stButton > button, div[data-testid="stFormSubmitButton"] button { background:#fff!important; border:1px solid #cbd5e1!important; border-radius:8px; color:#172033!important; min-height:46px; font-weight:800; width:100%; }
       button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] { background:#2f6fed!important; border-color:#2f6fed!important; color:#fff!important; }
       button * { color:inherit!important; }
-      input, textarea { font-size:16px!important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -413,10 +395,8 @@ def main() -> None:
     df = load_words()
     st.title("英単語帳")
     st.caption(f"スマホのブラウザで使える英単語帳 ・ 保存先: {'Supabase' if supabase_enabled() else 'CSV'}")
-    page = st.radio("画面", ["登録", "学習", "筆記", "穴埋め", "復習", "AI追加"], horizontal=True, label_visibility="collapsed")
-    if page == "登録":
-        register_screen(df)
-    elif page == "学習":
+    page = st.radio("画面", ["学習", "筆記", "穴埋め", "復習", "AI追加", "登録"], horizontal=True, label_visibility="collapsed")
+    if page == "学習":
         study_screen(df)
     elif page == "筆記":
         quiz_screen(df, "written")
@@ -424,8 +404,10 @@ def main() -> None:
         quiz_screen(df, "cloze")
     elif page == "復習":
         review_screen(df)
-    else:
+    elif page == "AI追加":
         ai_screen(df)
+    else:
+        register_screen(df)
 
 
 if __name__ == "__main__":
