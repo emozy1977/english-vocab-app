@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+.DS_Store
+.last_ai_words_date
+.streamlit/secrets.toml
+*.pyc
+*.xlsx
+create_*financial_model*
+Toyota_Motor_Financial_Model*
+B2B_SaaS_Financial_Model*
