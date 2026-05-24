@@ -18,6 +18,8 @@ create table if not exists public.words (
 alter table public.words
 add column if not exists part_of_speech text not null default 'other';
 
+notify pgrst, 'reload schema';
+
 update public.words
 set part_of_speech = case lower(word)
   when 'incorporate' then 'verb'
