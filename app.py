@@ -110,8 +110,35 @@ def priority(df: pd.DataFrame) -> pd.DataFrame:
     return work.sort_values(["wrong_count", "_last", "correct_count", "word"], ascending=[False, True, True, True]).drop(columns=["_last"])
 
 
+def newest_first(df: pd.DataFrame) -> pd.DataFrame:
+    work = df.copy()
+    work["_id_sort"] = pd.to_numeric(work["id"], errors="coerce").fillna(0)
+    return work.sort_values("_id_sort", ascending=False).drop(columns=["_id_sort"])
+
+
+def mixed_ids(df: pd.DataFrame) -> list[int]:
+    if df.empty:
+        return []
+    correct = pd.to_numeric(df["correct_count"], errors="coerce").fillna(0).astype(int)
+    wrong = pd.to_numeric(df["wrong_count"], errors="coerce").fillna(0).astype(int)
+    new_mask = (correct + wrong) == 0
+    difficult_mask = wrong > 0
+    buckets = {
+        "difficult": [int(x) for x in priority(df[difficult_mask])["id"].tolist()],
+        "new": [int(x) for x in newest_first(df[new_mask])["id"].tolist()],
+        "regular": [int(x) for x in priority(df[~new_mask & ~difficult_mask])["id"].tolist()],
+    }
+    order = ["difficult", "new", "difficult", "regular"]
+    ids: list[int] = []
+    while any(buckets.values()):
+        for name in order:
+            if buckets[name]:
+                ids.append(buckets[name].pop(0))
+    return ids
+
+
 def next_id(df: pd.DataFrame, current: int | None = None) -> int | None:
-    ids = [int(x) for x in priority(df)["id"].tolist()]
+    ids = mixed_ids(df)
     if not ids:
         return None
     if current not in ids or len(ids) == 1:
@@ -213,6 +240,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
+    st.caption("苦手な単語を優先しつつ、新しく追加した単語も混ぜて出します。")
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
