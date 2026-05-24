@@ -1,6 +1,6 @@
 # 英単語帳アプリ
 
-スマホのブラウザで使える、Streamlit製の英単語帳アプリです。ローカルでは `words.csv`、クラウドではSupabaseに保存できます。
+スマホのブラウザで使える、Streamlit製の英単語帳アプリです。単語データと学習履歴は `words.csv` に保存されます。
 
 ## 機能
 
@@ -8,9 +8,10 @@
 - 学習カード
 - 筆記問題
 - 穴埋め問題
-- 苦手単語を優先しつつ他の単語も混ぜる復習
-- 正解数、不正解数、最終学習日の保存
+- `wrong_count` が多い単語を優先する復習
+- 正解数、不正解数、最終学習日のCSV保存
 - OpenAI APIによるAI単語追加
+- Macでの毎日5語自動追加
 - Supabase保存によるクラウド公開対応
 - 任意のアプリパスワード保護
 
@@ -29,25 +30,163 @@
 
 ## Macでの起動方法
 
+ターミナルでこのフォルダに移動します。
+
 ```bash
-cd /Users/emotoshizuo/Documents/Codex
+cd /path/to/english-vocab-app
+```
+
+仮想環境を作成して有効化します。
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
+```
+
+必要なライブラリをインストールします。
+
+```bash
 python -m pip install --upgrade pip
 pip install -r requirements.txt
+```
+
+AI単語追加を使う場合は、OpenAI APIキーを環境変数に設定します。
+
+```bash
+export OPENAI_API_KEY="sk-..."
+```
+
+アプリを起動します。
+
+```bash
 streamlit run app.py
 ```
 
-ブラウザで開きます。
+ブラウザで次のURLを開きます。
 
 ```text
 http://localhost:8501
 ```
 
-同じWi-Fiのスマホから見る場合は次で起動します。
+## スマホから同じMac上のアプリを見る方法
+
+Macとスマホを同じWi-Fiに接続します。MacのIPアドレスを確認します。
+
+```bash
+ipconfig getifaddr en0
+```
+
+次のように起動します。
 
 ```bash
 streamlit run app.py --server.address 0.0.0.0
+```
+
+スマホのブラウザで次のURLを開きます。`<MacのIPアドレス>` は上で確認した値に置き換えてください。
+
+```text
+http://<MacのIPアドレス>:8501
+```
+
+## AIで単語を追加する方法
+
+`OPENAI_API_KEY` を設定した状態でアプリを起動すると、画面上部の `AI追加` から単語を増やせます。
+
+デフォルトでは `gpt-5.4-mini` を使います。別のモデルを使う場合は、次のように設定できます。
+
+```bash
+export OPENAI_MODEL="gpt-5.4-mini"
+```
+
+ターミナルから手動で5語追加する場合は次を実行します。
+
+```bash
+python daily_add_words.py
+```
+
+今日すでに追加済みでも追加したい場合は `--force` を付けます。
+
+```bash
+python daily_add_words.py --force
+```
+
+## Macで毎日5語を自動追加する方法
+
+Mac標準の `launchd` を使うと、毎日自動で `daily_add_words.py` を実行できます。
+
+まず、APIキーを保存するための環境変数ファイルを作ります。
+
+```bash
+mkdir -p ~/.english_vocab_app
+cat > ~/.english_vocab_app/env.sh <<'EOF'
+export OPENAI_API_KEY="sk-..."
+export OPENAI_MODEL="gpt-5.4-mini"
+EOF
+chmod 600 ~/.english_vocab_app/env.sh
+```
+
+次に、LaunchAgentを作成します。以下の例では毎朝7時に5語追加します。
+
+```bash
+cat > ~/Library/LaunchAgents/com.english-vocab.daily-ai-words.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.english-vocab.daily-ai-words</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>source ~/.english_vocab_app/env.sh && cd /path/to/english-vocab-app && .venv/bin/python daily_add_words.py</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>7</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/english-vocab-daily-ai-words.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/english-vocab-daily-ai-words.err</string>
+</dict>
+</plist>
+EOF
+```
+
+登録します。
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.english-vocab.daily-ai-words.plist
+```
+
+すぐに一度試す場合は次を実行します。
+
+```bash
+launchctl start com.english-vocab.daily-ai-words
+```
+
+停止する場合は次を実行します。
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.english-vocab.daily-ai-words.plist
+```
+
+## アプリ起動時に今日分を自動追加する方法
+
+アプリを開いたタイミングで、今日まだAI追加していなければ5語追加することもできます。
+
+```bash
+export OPENAI_API_KEY="sk-..."
+export AUTO_ADD_AI_WORDS=1
+streamlit run app.py
 ```
 
 ## Supabaseで外出先スマホ対応にする方法
@@ -58,7 +197,12 @@ streamlit run app.py --server.address 0.0.0.0
 
 [Supabase](https://supabase.com/) で新しいプロジェクトを作成します。
 
-作成後、Supabaseのダッシュボードで `SQL Editor` を開き、`supabase_schema.sql` の内容を実行します。
+作成後、Supabaseのダッシュボードで `SQL Editor` を開き、このリポジトリの `supabase_schema.sql` の内容を実行します。
+
+これで次のテーブルが作られます。
+
+- `words`: 単語と学習履歴
+- `app_settings`: AI自動追加の最終実行日など
 
 ### 2. Supabaseの接続情報を確認
 
@@ -71,38 +215,45 @@ Supabaseの `Project Settings` → `Data API` または `API` で次を確認し
 
 ### 3. ローカルでSupabase接続を試す
 
+ローカルでは環境変数で設定できます。
+
 ```bash
 export SUPABASE_URL="https://your-project.supabase.co"
 export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 export APP_PASSWORD="好きなパスワード"
+```
+
+既存の `words.csv` をSupabaseへ移行します。
+
+```bash
 python migrate_csv_to_supabase.py
+```
+
+アプリを起動します。
+
+```bash
 streamlit run app.py
 ```
 
 画面上部に `保存先: Supabase` と表示されれば成功です。
 
-## Streamlit Community Cloudに公開
+### 4. Streamlit Community Cloudに公開
 
-1. [Streamlit Community Cloud](https://streamlit.io/cloud) にログインします。
-2. `New app` を押します。
-3. Repository に `emozy1977/english-vocab-app` を選びます。
-4. Main file path に `app.py` を指定します。
-5. Advanced settings の Secrets に次を入力します。
+GitHubにこのフォルダをリポジトリとしてアップロードし、[Streamlit Community Cloud](https://streamlit.io/cloud) で `app.py` を指定してデプロイします。
+
+Streamlit Cloudの `Secrets` に次のように設定します。
 
 ```toml
 SUPABASE_URL = "https://your-project.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL = "gpt-5.4-mini"
 APP_PASSWORD = "好きなパスワード"
 ```
 
-AI単語追加も使う場合は追加します。
+`OPENAI_API_KEY` はAI単語追加を使う場合だけ必要です。`APP_PASSWORD` を設定すると、外から開いた時にパスワード画面が出ます。
 
-```toml
-OPENAI_API_KEY = "sk-..."
-OPENAI_MODEL = "gpt-5.4-mini"
-```
-
-`SUPABASE_SERVICE_ROLE_KEY` と `OPENAI_API_KEY` はSecretsだけに入れてください。GitHubには置きません。
+### 5. スマホで開く
 
 デプロイ後に発行されるURLをスマホで開きます。
 
@@ -110,24 +261,17 @@ OPENAI_MODEL = "gpt-5.4-mini"
 https://your-app-name.streamlit.app
 ```
 
-## AIで単語を追加する方法
-
-`OPENAI_API_KEY` を設定した状態でアプリを起動すると、画面上部の `AI追加` から単語を増やせます。
-
-ターミナルから手動で5語追加する場合は次を実行します。
-
-```bash
-python daily_add_words.py
-```
+ホーム画面に追加しておくと、スマホアプリのように使えます。
 
 ## データ保存
 
-`SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` が設定されている場合はSupabaseの `words` テーブルに保存します。設定されていない場合は `words.csv` に保存します。
+ローカルでは初期状態で `words.csv` に保存されます。`SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` が設定されている場合は、Supabaseの `words` テーブルに保存されます。
 
 主な列は次の通りです。
 
 - `word`: 英単語
 - `pronunciation`: 発音メモ
+- `part_of_speech`: 品詞
 - `meaning_ja`: 日本語の意味
 - `example_en`: 英語の例文
 - `example_ja`: 例文の日本語訳
