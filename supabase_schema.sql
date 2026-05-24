@@ -18,6 +18,22 @@ create table if not exists public.words (
 alter table public.words
 add column if not exists part_of_speech text not null default 'other';
 
+update public.words
+set part_of_speech = case lower(word)
+  when 'incorporate' then 'verb'
+  when 'consolidate' then 'verb'
+  when 'appropriate' then 'adjective'
+  when 'implement' then 'verb'
+  when 'overlook' then 'verb'
+  when 'fatigue' then 'noun'
+  when 'retention' then 'noun'
+  when 'elaborate' then 'verb'
+  when 'conversely' then 'adverb'
+  when 'recurrent' then 'adjective'
+  else part_of_speech
+end
+where part_of_speech = 'other';
+
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
