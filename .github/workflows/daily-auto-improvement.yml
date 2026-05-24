@@ -1,0 +1,107 @@
+name: Daily Auto Improvement
+
+on:
+  schedule:
+    - cron: "17 20 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: daily-auto-improvement
+  cancel-in-progress: false
+
+jobs:
+  improve:
+    name: Create one safe improvement PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run smoke tests before changes
+        run: python -B -m unittest discover -s tests
+
+      - name: Run AI improvement
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AUTO_IMPROVE_MODEL: ${{ secrets.AUTO_IMPROVE_MODEL }}
+          AUTO_IMPROVEMENT_SUMMARY_PATH: ${{ runner.temp }}/auto-improvement-pr.md
+          AUTO_IMPROVEMENT_TASK_PATH: ${{ runner.temp }}/auto-improvement-task.txt
+        run: python scripts/auto_improve.py --backlog IMPROVEMENT_BACKLOG.md
+
+      - name: Check generated changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No changes were generated. Skipping PR."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "task<<EOF" >> "$GITHUB_OUTPUT"
+            cat "${{ runner.temp }}/auto-improvement-task.txt" >> "$GITHUB_OUTPUT" || true
+            echo "EOF" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run smoke tests after changes
+        if: steps.diff.outputs.changed == 'true'
+        run: python -B -m unittest discover -s tests
+
+      - name: Create branch and commit
+        if: steps.diff.outputs.changed == 'true'
+        id: commit
+        env:
+          TASK_TITLE: ${{ steps.diff.outputs.task }}
+        run: |
+          branch="auto-improve/${GITHUB_RUN_ID}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -A
+          git commit -m "Auto improvement: ${TASK_TITLE:-daily safe improvement}"
+          git push --set-upstream origin "$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Open pull request
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.commit.outputs.branch }}
+          TASK_TITLE: ${{ steps.diff.outputs.task }}
+          BODY_FILE: ${{ runner.temp }}/auto-improvement-pr.md
+        run: |
+          if [ ! -s "$BODY_FILE" ]; then
+            cat > "$BODY_FILE" <<'EOF'
+          ## 改善内容
+          - 自動改善スクリプトが小さな変更を作成しました。
+
+          ## なぜ安全か
+          - smoke test通過後だけPRを作成しています。
+          - 本番ブランチへ直接pushしていません。
+
+          ## 実行したテスト結果
+          - python -B -m unittest discover -s tests
+
+          ## 人間が確認すべき点
+          - iPhoneで画面表示と主要操作を確認してください。
+          EOF
+          fi
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "Auto improvement: ${TASK_TITLE:-daily safe improvement}" \
+            --body-file "$BODY_FILE"

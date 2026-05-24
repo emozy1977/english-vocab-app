@@ -22,6 +22,15 @@
 ├── app.py
 ├── daily_add_words.py
 ├── migrate_csv_to_supabase.py
+├── scripts/
+│   └── auto_improve.py
+├── tests/
+│   └── test_smoke.py
+├── docs/
+│   └── auto-improvement.md
+├── IMPROVEMENT_BACKLOG.md
+├── .github/workflows/
+│   └── daily-auto-improvement.yml
 ├── supabase_schema.sql
 ├── words.csv
 ├── requirements.txt
@@ -67,6 +76,20 @@ streamlit run app.py
 ```text
 http://localhost:8501
 ```
+
+## テスト
+
+最低限の動作確認として、アプリの主要な補助関数を読み込むsmoke testを用意しています。
+
+```bash
+python -B -m unittest discover -s tests
+```
+
+## 毎日自動改善PR
+
+GitHub Actionsで、毎日1回だけ小さな改善PRを作る仕組みを用意しています。OpenAI APIを使って `IMPROVEMENT_BACKLOG.md` から安全な小タスクを1つ選び、テストが通った場合だけPRを作成します。
+
+詳しい使い方、必要なGitHub Secrets、止め方は [docs/auto-improvement.md](docs/auto-improvement.md) を見てください。
 
 ## スマホから同じMac上のアプリを見る方法
 
