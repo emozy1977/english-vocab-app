@@ -553,7 +553,7 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
     with st.form("ai_form"):
         count = st.number_input("追加する単語数", 1, 20, 5)
         category = st.text_input("カテゴリの希望", placeholder="Business, Academic など")
-        difficulty = st.selectbox("難易度", ["3から5を中心にする", "1から2の基礎", "3の中級", "4から5の上級"])
+        difficulty = st.selectbox("難易度", ["3から5を中心にする", "1から2の基礎", "3の中級", "4から5の上級"], index=3)
         model = st.text_input("モデル", value=model_default)
         force = st.checkbox("今日すでに追加済みでも実行する")
         submitted = st.form_submit_button("AIで今日分を追加", disabled=not bool(api_key))
