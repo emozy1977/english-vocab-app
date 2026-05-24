@@ -88,8 +88,7 @@ def save_rows(rows: list[dict[str, object]]) -> None:
         supabase_client().table(SUPABASE_TABLE).upsert(normalized[COLUMNS].to_dict("records"), on_conflict="word").execute()
         return
     current = load_words()
-    merged = pd.concat([current, normalized], ignore_index=True)
-    merged = merged.drop_duplicates(subset=["word"], keep="last")
+    merged = pd.concat([current, normalized], ignore_index=True).drop_duplicates(subset=["word"], keep="last")
     merged.to_csv(DATA_FILE, index=False)
 
 
@@ -149,10 +148,18 @@ def norm(value: str) -> str:
     return value.strip().lower()
 
 
-def priority(df: pd.DataFrame) -> pd.DataFrame:
+def with_scores(df: pd.DataFrame) -> pd.DataFrame:
     work = df.copy()
+    work["_correct"] = pd.to_numeric(work["correct_count"], errors="coerce").fillna(0).astype(int)
+    work["_wrong"] = pd.to_numeric(work["wrong_count"], errors="coerce").fillna(0).astype(int)
+    work["weakness_score"] = work["_wrong"] - work["_correct"]
+    return work
+
+
+def priority(df: pd.DataFrame) -> pd.DataFrame:
+    work = with_scores(df)
     work["_last"] = pd.to_datetime(work["last_studied"], errors="coerce").fillna(pd.Timestamp("1970-01-01"))
-    return work.sort_values(["wrong_count", "_last", "correct_count", "word"], ascending=[False, True, True, True]).drop(columns=["_last"])
+    return work.sort_values(["weakness_score", "_last", "_wrong", "word"], ascending=[False, True, False, True]).drop(columns=["_correct", "_wrong", "_last"])
 
 
 def newest_first(df: pd.DataFrame) -> pd.DataFrame:
@@ -164,14 +171,13 @@ def newest_first(df: pd.DataFrame) -> pd.DataFrame:
 def mixed_ids(df: pd.DataFrame) -> list[int]:
     if df.empty:
         return []
-    correct = pd.to_numeric(df["correct_count"], errors="coerce").fillna(0).astype(int)
-    wrong = pd.to_numeric(df["wrong_count"], errors="coerce").fillna(0).astype(int)
-    new_mask = (correct + wrong) == 0
-    difficult_mask = wrong > 0
+    scored = with_scores(df)
+    new_mask = (scored["_correct"] + scored["_wrong"]) == 0
+    difficult_mask = scored["weakness_score"] > 0
     buckets = {
-        "difficult": [int(x) for x in priority(df[difficult_mask])["id"].tolist()],
-        "new": [int(x) for x in newest_first(df[new_mask])["id"].tolist()],
-        "regular": [int(x) for x in priority(df[~new_mask & ~difficult_mask])["id"].tolist()],
+        "difficult": [int(x) for x in priority(scored[difficult_mask])["id"].tolist()],
+        "new": [int(x) for x in newest_first(scored[new_mask])["id"].tolist()],
+        "regular": [int(x) for x in priority(scored[~new_mask & ~difficult_mask])["id"].tolist()],
     }
     order = ["difficult", "new", "difficult", "regular"]
     ids: list[int] = []
@@ -299,7 +305,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
-    st.caption("苦手な単語を優先しつつ、新しく追加した単語も混ぜて出します。")
+    st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
@@ -363,7 +369,8 @@ def review_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1, c2 = st.columns(2)
     c1.metric("単語数", len(df))
     c2.metric("不正解合計", int(df["wrong_count"].sum()))
-    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "correct_count", "wrong_count", "last_studied", "category", "difficulty"]], width="stretch", hide_index=True)
+    st.caption("苦手数（不正解 - 正解）が多い順に並びます。")
+    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied", "category", "difficulty"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "weakness_score": "苦手数", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日", "category": "カテゴリ", "difficulty": "難易度"}), width="stretch", hide_index=True)
     return df
 
 
