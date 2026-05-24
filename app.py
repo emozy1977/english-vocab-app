@@ -15,6 +15,7 @@ COUNT_COLUMNS = ["correct_count", "wrong_count"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
+SESSION_WORDS_KEY = "words_df"
 
 SAMPLE_WORDS = [
     [1, "incorporate", "in-KOR-puh-rayt", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", 0, 0, ""],
@@ -71,12 +72,48 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def save_rows(rows: list[dict[str, object]]) -> None:
+    if not rows:
+        return
+    normalized = normalize_df(pd.DataFrame(rows))
+    if supabase_enabled():
+        supabase_client().table(SUPABASE_TABLE).upsert(normalized[COLUMNS].to_dict("records"), on_conflict="word").execute()
+        return
+    current = load_words()
+    merged = pd.concat([current, normalized], ignore_index=True)
+    merged = merged.drop_duplicates(subset=["word"], keep="last")
+    merged.to_csv(DATA_FILE, index=False)
+
+
 def save_words(df: pd.DataFrame) -> None:
     df = normalize_df(df)
     if supabase_enabled():
         supabase_client().table(SUPABASE_TABLE).upsert(df[COLUMNS].to_dict("records"), on_conflict="word").execute()
         return
     df.to_csv(DATA_FILE, index=False)
+
+
+def save_stats(row: pd.Series) -> None:
+    if supabase_enabled():
+        supabase_client().table(SUPABASE_TABLE).update({
+            "correct_count": int(row["correct_count"]),
+            "wrong_count": int(row["wrong_count"]),
+            "last_studied": str(row["last_studied"]),
+        }).eq("id", int(row["id"])).execute()
+        return
+    save_words(st.session_state.get(SESSION_WORDS_KEY, pd.DataFrame()))
+
+
+def set_words(df: pd.DataFrame) -> pd.DataFrame:
+    df = normalize_df(df)
+    st.session_state[SESSION_WORDS_KEY] = df
+    return df
+
+
+def words_for_session(force_reload: bool = False) -> pd.DataFrame:
+    if force_reload or SESSION_WORDS_KEY not in st.session_state:
+        return set_words(load_words())
+    return normalize_df(st.session_state[SESSION_WORDS_KEY])
 
 
 def load_words() -> pd.DataFrame:
@@ -154,16 +191,24 @@ def row_by_id(df: pd.DataFrame, word_id: int):
 def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
     df = df.copy()
     mask = df["id"] == word_id
+    if not mask.any():
+        return df
     col = "correct_count" if correct else "wrong_count"
     df.loc[mask, col] = df.loc[mask, col].astype(int) + 1
     df.loc[mask, "last_studied"] = today()
-    save_words(df)
-    return df
+    df = normalize_df(df)
+    row = df[df["id"] == word_id].iloc[0]
+    if supabase_enabled():
+        save_stats(row)
+    else:
+        save_words(df)
+    return set_words(df)
 
 
 def upsert_word(df: pd.DataFrame, values: dict[str, str]) -> tuple[pd.DataFrame, bool]:
     df = df.copy()
-    mask = df["word"].astype(str).str.strip().str.lower() == norm(values["word"])
+    normalized_word = norm(values["word"])
+    mask = df["word"].astype(str).str.strip().str.lower() == normalized_word
     if mask.any():
         idx = df[mask].index[0]
         for key, value in values.items():
@@ -173,8 +218,13 @@ def upsert_word(df: pd.DataFrame, values: dict[str, str]) -> tuple[pd.DataFrame,
         values = {**values, "id": int(df["id"].max()) + 1 if not df.empty else 1, "correct_count": 0, "wrong_count": 0, "last_studied": ""}
         df = pd.concat([df, pd.DataFrame([values])], ignore_index=True)
         created = True
-    save_words(df)
-    return normalize_df(df), created
+    df = normalize_df(df)
+    save_row = df[df["word"].astype(str).str.strip().str.lower() == normalized_word].iloc[0].to_dict()
+    if supabase_enabled():
+        save_rows([save_row])
+    else:
+        save_words(df)
+    return set_words(df), created
 
 
 def blank_sentence(example: str, word: str) -> str:
@@ -362,9 +412,12 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
             break
     if rows:
         df = pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
-        save_words(df)
+        if supabase_enabled():
+            save_rows(rows)
+        else:
+            save_words(df)
         set_last_ai_date()
-    return normalize_df(df), added
+    return set_words(df), added
 
 
 def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
@@ -441,7 +494,7 @@ def main() -> None:
     css()
     if not require_password():
         return
-    df = load_words()
+    df = words_for_session()
     st.title("英単語帳")
     st.caption(f"スマホのブラウザで使える英単語帳 ・ 保存先: {'Supabase' if supabase_enabled() else 'CSV'}")
     page = st.radio("画面", ["学習", "筆記", "穴埋め", "復習", "AI追加", "登録"], horizontal=True, label_visibility="collapsed")
