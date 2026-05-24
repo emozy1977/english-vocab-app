@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 from datetime import date
@@ -140,6 +141,69 @@ def esc(value: object) -> str:
     return html.escape(str(value))
 
 
+def render_pronunciation_button(word: object) -> None:
+    speak_text = str(word).strip()
+    if not speak_text:
+        return
+
+    st.iframe(
+        f"""
+        <button id="speak-word" type="button" aria-label="発音を再生">
+          <span class="speaker-icon">▶</span>
+          <span>発音を聞く</span>
+        </button>
+        <script>
+          const button = document.getElementById("speak-word");
+          const text = {json.dumps(speak_text)};
+          button.addEventListener("click", () => {{
+            if (!("speechSynthesis" in window)) {{
+              button.textContent = "このブラウザでは音声再生できません";
+              return;
+            }}
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = "en-US";
+            utterance.rate = 0.88;
+            utterance.pitch = 1;
+            window.speechSynthesis.speak(utterance);
+          }});
+        </script>
+        <style>
+          html, body {{
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }}
+          #speak-word {{
+            align-items: center;
+            background: #ffffff;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            color: #172033;
+            display: inline-flex;
+            font-size: 16px;
+            font-weight: 800;
+            gap: 0.45rem;
+            justify-content: center;
+            min-height: 46px;
+            padding: 0 0.95rem;
+            width: 100%;
+          }}
+          #speak-word:active {{
+            background: #eef4ff;
+            border-color: #2f6fed;
+          }}
+          .speaker-icon {{
+            color: #2f6fed;
+            font-size: 0.9rem;
+          }}
+        </style>
+        """,
+        height=54,
+    )
+
+
 def today() -> str:
     return date.today().isoformat()
 
@@ -264,6 +328,7 @@ def render_card(row, show_answer: bool = True) -> None:
       <div class="stats-line">正解 {int(row['correct_count'])} ・ 不正解 {int(row['wrong_count'])} ・ 最終 {esc(row['last_studied'] or '-')}</div>
     </div>
     """, unsafe_allow_html=True)
+    render_pronunciation_button(row["word"])
 
 
 def register_screen(df: pd.DataFrame) -> pd.DataFrame:
@@ -346,6 +411,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     result = st.session_state.get(result_key)
     if result and result["id"] == int(row["id"]):
         (st.success if result["correct"] else st.error)(f"{'正解' if result['correct'] else '不正解'}です。正解: {result['expected']}")
+        render_pronunciation_button(result["expected"])
         if st.button("次の問題", type="primary", width="stretch"):
             st.session_state.pop(result_key, None)
             st.session_state[current_key] = next_id(available, int(row["id"]))
