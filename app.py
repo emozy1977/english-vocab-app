@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 DATA_FILE = Path(__file__).with_name("words.csv")
-COLUMNS = ["id", "word", "pronunciation", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]
+COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]
 COUNT_COLUMNS = ["correct_count", "wrong_count"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
@@ -18,16 +18,16 @@ DEFAULT_AI_MODEL = "gpt-5.4-mini"
 SESSION_WORDS_KEY = "words_df"
 
 SAMPLE_WORDS = [
-    [1, "incorporate", "in-KOR-puh-rayt", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", 0, 0, ""],
-    [2, "consolidate", "kun-SOL-ih-dayt", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "Business", "4", 0, 0, ""],
-    [3, "appropriate", "uh-PROH-pree-uht", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "Academic", "3", 0, 0, ""],
-    [4, "implement", "IM-pluh-ment", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "Business", "3", 0, 0, ""],
-    [5, "overlook", "oh-ver-LOOK", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "Daily", "3", 0, 0, ""],
-    [6, "fatigue", "fuh-TEEG", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "Health", "2", 0, 0, ""],
-    [7, "retention", "ree-TEN-shun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "Learning", "4", 0, 0, ""],
-    [8, "elaborate", "ih-LAB-uh-rayt", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "Academic", "3", 0, 0, ""],
-    [9, "conversely", "KON-ver-slee", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "Academic", "4", 0, 0, ""],
-    [10, "recurrent", "ree-KUR-unt", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "Academic", "4", 0, 0, ""],
+    [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", 0, 0, ""],
+    [2, "consolidate", "kun-SOL-ih-dayt", "verb", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "Business", "4", 0, 0, ""],
+    [3, "appropriate", "uh-PROH-pree-uht", "adjective", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "Academic", "3", 0, 0, ""],
+    [4, "implement", "IM-pluh-ment", "verb", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "Business", "3", 0, 0, ""],
+    [5, "overlook", "oh-ver-LOOK", "verb", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "Daily", "3", 0, 0, ""],
+    [6, "fatigue", "fuh-TEEG", "noun", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "Health", "2", 0, 0, ""],
+    [7, "retention", "ree-TEN-shun", "noun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "Learning", "4", 0, 0, ""],
+    [8, "elaborate", "ih-LAB-uh-rayt", "verb", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "Academic", "3", 0, 0, ""],
+    [9, "conversely", "KON-ver-slee", "adverb", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "Academic", "4", 0, 0, ""],
+    [10, "recurrent", "ree-KUR-unt", "adjective", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "Academic", "4", 0, 0, ""],
 ]
 
 
@@ -69,6 +69,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in COUNT_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     df["difficulty"] = df["difficulty"].astype(str).replace({"": "3"})
+    df["part_of_speech"] = df["part_of_speech"].astype(str).replace({"": "other"})
     return df
 
 
@@ -242,7 +243,7 @@ def render_card(row, show_answer: bool = True) -> None:
         answer_html = '<div class="answer-placeholder">日本語訳はまだ隠れています。</div>'
     st.markdown(f"""
     <div class="word-card">
-      <div><span class="pill">{esc(row['category'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
+      <div><span class="pill">{esc(row['category'])}</span><span class="pill">{esc(row['part_of_speech'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
       <div class="word-title">{esc(row['word'])}</div>
       <div class="pronunciation">{esc(row['pronunciation'])}</div>
       <div class="example-en">{esc(row['example_en'])}</div>
@@ -257,6 +258,7 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
     with st.form("word_form", clear_on_submit=True):
         word = st.text_input("英単語")
         pronunciation = st.text_input("発音メモ")
+        part_of_speech = st.selectbox("品詞", ["noun", "verb", "adjective", "adverb", "phrase", "other"], index=1)
         meaning = st.text_area("日本語の意味", height=80)
         example_en = st.text_area("英語の例文", height=90)
         example_ja = st.text_area("例文の日本語訳", height=90)
@@ -267,10 +269,10 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
         if not word.strip() or not meaning.strip():
             st.error("英単語と日本語の意味は必須です。")
         else:
-            df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty})
+            df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty})
             st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
     with st.expander("登録済み単語"):
-        st.dataframe(df[["word", "meaning_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]], width="stretch", hide_index=True)
+        st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]], width="stretch", hide_index=True)
     return df
 
 
@@ -325,7 +327,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         st.session_state[current_key] = next_id(available)
     row = row_by_id(available, st.session_state[current_key])
     prompt = row["meaning_ja"] if mode == "written" else blank_sentence(row["example_en"], row["word"])
-    hint = f"{row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
+    hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
     st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
     result = st.session_state.get(result_key)
@@ -354,7 +356,7 @@ def review_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1, c2 = st.columns(2)
     c1.metric("単語数", len(df))
     c2.metric("不正解合計", int(df["wrong_count"].sum()))
-    st.dataframe(p[["word", "meaning_ja", "correct_count", "wrong_count", "last_studied", "category", "difficulty"]], width="stretch", hide_index=True)
+    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "correct_count", "wrong_count", "last_studied", "category", "difficulty"]], width="stretch", hide_index=True)
     return df
 
 
@@ -383,6 +385,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
     class AiWord(BaseModel):
         word: str
         pronunciation: str
+        part_of_speech: str = Field(description="Part of speech: noun, verb, adjective, adverb, phrase, or other")
         meaning_ja: str
         example_en: str
         example_ja: str
@@ -393,7 +396,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         words: list[AiWord]
 
     existing = ", ".join(df["word"].astype(str).tolist()[:500])
-    prompt = f"Generate {count} useful English vocabulary entries for a Japanese learner. Do not include these words: {existing}. Category hint: {category or 'any practical category'}. Difficulty hint: {difficulty}. Return Japanese meanings and translations."
+    prompt = f"Generate {count} useful English vocabulary entries for a Japanese learner. Do not include these words: {existing}. Include part_of_speech as noun, verb, adjective, adverb, phrase, or other. Category hint: {category or 'any practical category'}. Difficulty hint: {difficulty}. Return Japanese meanings and translations."
     parsed = OpenAI(api_key=api_key).responses.parse(model=model or DEFAULT_AI_MODEL, instructions="You are an English vocabulary coach for Japanese learners.", input=prompt, text_format=Batch).output_parsed
     existing_set = set(df["word"].astype(str).str.lower().str.strip())
     rows = []
@@ -404,6 +407,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         word = values["word"].strip()
         if not word or word.lower() in existing_set:
             continue
+        values["part_of_speech"] = str(values.get("part_of_speech") or "other").strip() or "other"
         rows.append({"id": next_word_id, **values, "correct_count": 0, "wrong_count": 0, "last_studied": ""})
         added.append(word)
         existing_set.add(word.lower())
