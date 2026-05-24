@@ -16,6 +16,8 @@ SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
 SESSION_WORDS_KEY = "words_df"
+PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
+PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
 
 SAMPLE_WORDS = [
     [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", 0, 0, ""],
@@ -52,6 +54,11 @@ def supabase_client():
     return create_client(config("SUPABASE_URL"), key)
 
 
+def normalize_pos(value: object) -> str:
+    value = str(value).strip().lower()
+    return value if value in PARTS_OF_SPEECH_SET else "other"
+
+
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in COLUMNS:
@@ -69,7 +76,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in COUNT_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     df["difficulty"] = df["difficulty"].astype(str).replace({"": "3"})
-    df["part_of_speech"] = df["part_of_speech"].astype(str).replace({"": "other"})
+    df["part_of_speech"] = df["part_of_speech"].apply(normalize_pos)
     return df
 
 
@@ -258,7 +265,7 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
     with st.form("word_form", clear_on_submit=True):
         word = st.text_input("英単語")
         pronunciation = st.text_input("発音メモ")
-        part_of_speech = st.selectbox("品詞", ["noun", "verb", "adjective", "adverb", "phrase", "other"], index=1)
+        part_of_speech = st.selectbox("品詞", PARTS_OF_SPEECH, index=1)
         meaning = st.text_area("日本語の意味", height=80)
         example_en = st.text_area("英語の例文", height=90)
         example_ja = st.text_area("例文の日本語訳", height=90)
@@ -407,7 +414,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         word = values["word"].strip()
         if not word or word.lower() in existing_set:
             continue
-        values["part_of_speech"] = str(values.get("part_of_speech") or "other").strip() or "other"
+        values["part_of_speech"] = normalize_pos(values.get("part_of_speech"))
         rows.append({"id": next_word_id, **values, "correct_count": 0, "wrong_count": 0, "last_studied": ""})
         added.append(word)
         existing_set.add(word.lower())
@@ -424,18 +431,59 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
     return set_words(df), added
 
 
+def classify_existing_pos(df: pd.DataFrame, model: str, api_key: str) -> tuple[pd.DataFrame, int]:
+    missing = df[df["part_of_speech"].apply(normalize_pos) == "other"]
+    if missing.empty:
+        return df, 0
+    from openai import OpenAI
+    from pydantic import BaseModel, Field
+
+    class PosItem(BaseModel):
+        word: str
+        part_of_speech: str = Field(pattern="^(noun|verb|adjective|adverb|phrase|other)$")
+
+    class PosBatch(BaseModel):
+        words: list[PosItem]
+
+    lines = "\n".join(f"- {r.word}: {r.meaning_ja}; example: {r.example_en}" for r in missing.itertuples())
+    parsed = OpenAI(api_key=api_key).responses.parse(
+        model=model or DEFAULT_AI_MODEL,
+        instructions="Classify each English word using only noun, verb, adjective, adverb, phrase, or other.",
+        input=f"Classify these vocabulary entries and return one result for each:\n{lines}",
+        text_format=PosBatch,
+    ).output_parsed
+    lookup = {item.word.strip().lower(): normalize_pos(item.part_of_speech) for item in parsed.words}
+    updated = normalize_df(df)
+    changed = []
+    for idx, row in missing.iterrows():
+        part = lookup.get(str(row["word"]).strip().lower(), "other")
+        if part != "other":
+            updated.at[idx, "part_of_speech"] = part
+            changed.append(idx)
+    if not changed:
+        return set_words(updated), 0
+    updated = normalize_df(updated)
+    if supabase_enabled():
+        save_rows(updated.loc[changed, COLUMNS].to_dict("records"))
+    else:
+        save_words(updated)
+    return set_words(updated), len(changed)
+
+
 def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
     st.subheader("AIで単語追加")
+    api_key = config("OPENAI_API_KEY")
+    model_default = config("OPENAI_MODEL", DEFAULT_AI_MODEL)
     st.info(f"最終AI追加日: {last_ai_date() or '-'} / 現在の単語数: {len(df)}")
-    if not config("OPENAI_API_KEY"):
+    if not api_key:
         st.warning("OPENAI_API_KEY をSecretsに設定すると使えます。")
     with st.form("ai_form"):
         count = st.number_input("追加する単語数", 1, 20, 5)
         category = st.text_input("カテゴリの希望", placeholder="Business, Academic など")
         difficulty = st.selectbox("難易度", ["3から5を中心にする", "1から2の基礎", "3の中級", "4から5の上級"])
-        model = st.text_input("モデル", value=config("OPENAI_MODEL", DEFAULT_AI_MODEL))
+        model = st.text_input("モデル", value=model_default)
         force = st.checkbox("今日すでに追加済みでも実行する")
-        submitted = st.form_submit_button("AIで今日分を追加", disabled=not bool(config("OPENAI_API_KEY")))
+        submitted = st.form_submit_button("AIで今日分を追加", disabled=not bool(api_key))
     if submitted:
         if last_ai_date() == today() and not force:
             st.info("今日はすでに追加済みです。")
@@ -446,6 +494,18 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
             st.success(f"{len(added)}語を追加しました: {', '.join(added)}" if added else "新しい単語は追加されませんでした。")
         except Exception as exc:
             st.error(f"AI生成に失敗しました: {exc}")
+    missing_pos = int((df["part_of_speech"].apply(normalize_pos) == "other").sum())
+    with st.expander("既存単語の品詞を補完"):
+        st.write(f"品詞が未設定の単語: {missing_pos}語")
+        if st.button("AIで品詞を補完", type="primary", width="stretch", disabled=not bool(api_key) or missing_pos == 0):
+            try:
+                with st.spinner("AIが既存単語の品詞を判定しています..."):
+                    df, changed = classify_existing_pos(df, model_default, api_key)
+            except Exception as exc:
+                st.error(f"品詞の補完に失敗しました: {exc}")
+            else:
+                st.success(f"{changed}語の品詞を更新しました。")
+                st.rerun()
     return df
 
 
