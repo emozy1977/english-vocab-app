@@ -151,22 +151,30 @@ jobs:
               printf '%s\n' '- iPhoneで画面表示と主要操作を確認してください。'
             } > "$BODY_FILE"
           fi
+          pr_log="${RUNNER_TEMP}/gh-pr-create.log"
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "Auto improvement: ${TASK_TITLE:-daily safe improvement}" \
-            --body-file "$BODY_FILE"
+            --body-file "$BODY_FILE" > "$pr_log" 2>&1
           pr_status=$?
           if [ "$pr_status" -eq 0 ]; then
             {
               printf '\n%s\n' '## PR作成'
               printf '%s\n' '- 成功: 自動改善PRを作成しました。'
+              printf '\n```text\n'
+              cat "$pr_log"
+              printf '\n```\n'
             } >> "$GITHUB_STEP_SUMMARY"
           else
             {
               printf '\n%s\n' '## PR作成'
               printf '%s\n' '- PR作成に失敗しました。'
               printf '%s\n' '- push済みブランチが残っている可能性があります。Actionsログを確認してください。'
+              printf '%s\n' '- GitHubの `Settings` → `Actions` → `General` で、Workflow permissions と Pull request creation の許可を確認してください。'
+              printf '\n```text\n'
+              cat "$pr_log"
+              printf '\n```\n'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
           exit 0
