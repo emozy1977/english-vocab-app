@@ -358,6 +358,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
+    # Initialize current id and reveal state if missing or invalid
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id(df)
         st.session_state[reveal_key] = False
@@ -371,6 +372,12 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
+
+    # Show a one-time status message if we navigated via "次のカード"
+    status_msg = st.session_state.pop("study_status", None) if "study_status" in st.session_state else None
+    if status_msg:
+        st.info(status_msg)
+
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
@@ -387,9 +394,20 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
         st.rerun()
+    # Enhanced: when pressing "次のカード", store a small status message so user sees which card came next
     if st.button("次のカード", width="stretch"):
-        st.session_state[key] = next_id(df, int(row["id"]))
+        next_card_id = next_id(df, int(row["id"]))
+        st.session_state[key] = next_card_id
         st.session_state[reveal_key] = False
+        # Prepare a friendly one-time message to show after rerun
+        if next_card_id is None:
+            st.session_state["study_status"] = "次のカードに移動しました。"
+        else:
+            nr = row_by_id(df, next_card_id)
+            if nr is not None:
+                st.session_state["study_status"] = f"次のカード: {nr['word']} ・ Lv {nr['difficulty']} ・ 正{int(nr['correct_count'])} 不正{int(nr['wrong_count'])}"
+            else:
+                st.session_state["study_status"] = "次のカードに移動しました。"
         st.rerun()
     return df
 
