@@ -331,6 +331,16 @@ def render_card(row, show_answer: bool = True) -> None:
     render_pronunciation_button(row["word"])
 
 
+def status_message(message: str, kind: str = "info") -> None:
+    renderers = {
+        "info": st.info,
+        "success": st.success,
+        "warning": st.warning,
+        "error": st.error,
+    }
+    renderers.get(kind, st.info)(message)
+
+
 def register_screen(df: pd.DataFrame) -> pd.DataFrame:
     st.subheader("単語登録")
     with st.form("word_form", clear_on_submit=True):
@@ -358,6 +368,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
+    next_status_key = "study_next_status"
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id(df)
         st.session_state[reveal_key] = False
@@ -368,6 +379,8 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     if st.session_state.get(viewed_key) != int(row["id"]):
         st.session_state[viewed_key] = int(row["id"])
         st.session_state[reveal_key] = False
+    if st.session_state.get(next_status_key):
+        status_message(st.session_state.pop(next_status_key), "success")
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
@@ -381,15 +394,18 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         df = update_stats(df, int(row["id"]), True)
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
+        st.session_state[next_status_key] = "次のカードを準備しました。"
         st.rerun()
     if c2.button("苦手", width="stretch"):
         df = update_stats(df, int(row["id"]), False)
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
+        st.session_state[next_status_key] = "次のカードを準備しました。"
         st.rerun()
     if st.button("次のカード", width="stretch"):
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
+        st.session_state[next_status_key] = "次のカードを表示しました。"
         st.rerun()
     return df
 
