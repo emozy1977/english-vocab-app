@@ -358,6 +358,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
+    # Initialize current card
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id(df)
         st.session_state[reveal_key] = False
@@ -368,9 +369,13 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     if st.session_state.get(viewed_key) != int(row["id"]):
         st.session_state[viewed_key] = int(row["id"])
         st.session_state[reveal_key] = False
-    show_answer = bool(st.session_state.get(reveal_key, False))
+    # If there's a one-time flash message (e.g. after navigating), show it once and remove
+    flash = st.session_state.pop("study_flash", None) if "study_flash" in st.session_state else None
     st.subheader("学習カード")
+    if flash:
+        st.info(str(flash))
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
+    show_answer = bool(st.session_state.get(reveal_key, False))
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
@@ -388,7 +393,16 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
         st.rerun()
     if st.button("次のカード", width="stretch"):
-        st.session_state[key] = next_id(df, int(row["id"]))
+        # Prepare a one-time informative message about the next card so the user immediately sees context after navigation.
+        next_id_val = next_id(df, int(row["id"]))
+        next_row = row_by_id(df, next_id_val) if next_id_val is not None else None
+        if next_row is not None:
+            # Build a short message containing the next word and a couple of hints
+            msg = f"次のカード: {next_row['word']} ・ {next_row['part_of_speech']} ・ Lv {next_row['difficulty']}"
+        else:
+            msg = "次のカードに移動しました。"
+        st.session_state["study_flash"] = msg
+        st.session_state[key] = next_id_val
         st.session_state[reveal_key] = False
         st.rerun()
     return df
