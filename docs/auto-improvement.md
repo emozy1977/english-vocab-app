@@ -7,9 +7,10 @@
 1. GitHub Actionsが毎日1回起動します。
 2. `IMPROVEMENT_BACKLOG.md` から安全な未完了タスクを1つ選びます。
 3. `scripts/auto_improve.py` がOpenAI APIで小さな変更案を作ります。
-4. smoke testを実行します。
-5. テスト成功時だけ `auto-improve/<run_id>` ブランチをpushし、PRを作成します。
-6. テスト失敗時、または変更がない時はPRを作りません。
+4. 変更が作れたら、選んだタスクを `IMPROVEMENT_BACKLOG.md` で完了済みにし、`AUTO_IMPROVEMENT_HISTORY.md` に記録します。
+5. smoke testを実行します。
+6. テスト成功時だけ `auto-improve/<run_id>` ブランチをpushし、PRを作成します。
+7. テスト失敗時、または変更がない時はPRを作りません。
 
 ## 必要なGitHub Secrets
 
@@ -35,8 +36,9 @@ PRを自動作成するには、GitHubリポジトリの `Settings` → `Actions
 2. `Pull requests` を開き、`Auto improvement:` で始まるPRを確認します。
 3. PR本文の「改善内容」「なぜ安全か」「実行したテスト結果」「人間が確認すべき点」を読みます。
 4. 変更ファイルを確認します。
-5. 問題なければ `Merge pull request` を押します。
-6. 迷う場合はマージせず、PRにコメントするか閉じます。
+5. `IMPROVEMENT_BACKLOG.md` の対象タスクが `[x]` になり、`AUTO_IMPROVEMENT_HISTORY.md` に履歴が追記されていることを確認します。
+6. 問題なければ `Merge pull request` を押します。
+7. 迷う場合はマージせず、PRにコメントするか閉じます。
 
 ## 自動改善の対象
 

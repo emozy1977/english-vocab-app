@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKLOG = ROOT / "IMPROVEMENT_BACKLOG.md"
+HISTORY_FILE = ROOT / "AUTO_IMPROVEMENT_HISTORY.md"
 DEFAULT_MODEL = "gpt-5-mini"
 FALLBACK_MODELS = ("gpt-5-mini", "gpt-4.1-mini")
 
@@ -18,6 +19,7 @@ ALLOWED_EXACT_PATHS = {
     "app.py",
     "README.md",
     "IMPROVEMENT_BACKLOG.md",
+    "AUTO_IMPROVEMENT_HISTORY.md",
 }
 ALLOWED_PREFIXES = ("docs/", "tests/")
 BLOCKED_EXACT_PATHS = {
@@ -106,7 +108,18 @@ def safe_task(line: str) -> bool:
     return not any(keyword in lowered for keyword in BLOCKED_TASK_KEYWORDS)
 
 
-def pick_task(backlog: Path) -> str:
+def recent_history_tasks(history: Path, limit: int = 20) -> set[str]:
+    if not history.exists():
+        return set()
+    tasks: list[str] = []
+    for line in history.read_text(encoding="utf-8").splitlines():
+        match = re.match(r"\s*-\s*\d{4}-\d{2}-\d{2}:\s*(.+)", line)
+        if match:
+            tasks.append(match.group(1).strip())
+    return set(tasks[-limit:])
+
+
+def pick_task(backlog: Path, history: Path = HISTORY_FILE) -> str:
     tasks: list[str] = []
     for line in backlog.read_text(encoding="utf-8").splitlines():
         match = re.match(r"\s*-\s*\[\s\]\s*(.+)", line)
@@ -114,7 +127,31 @@ def pick_task(backlog: Path) -> str:
             tasks.append(match.group(1).strip())
     if not tasks:
         raise RuntimeError("No safe unchecked task found in IMPROVEMENT_BACKLOG.md")
-    return tasks[(date.today().toordinal() - 1) % len(tasks)]
+    recent = recent_history_tasks(history)
+    fresh_tasks = [task for task in tasks if task not in recent]
+    candidates = fresh_tasks or tasks
+    return candidates[(date.today().toordinal() - 1) % len(candidates)]
+
+
+def mark_task_done(backlog: Path, task: str) -> None:
+    lines = backlog.read_text(encoding="utf-8").splitlines()
+    target = f"- [ ] {task}"
+    for index, line in enumerate(lines):
+        if line.strip() == target:
+            indent = line[: len(line) - len(line.lstrip())]
+            lines[index] = f"{indent}- [x] {task}"
+            backlog.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return
+    raise RuntimeError(f"Selected task was not found in backlog: {task}")
+
+
+def append_history(history: Path, task: str, result: ImprovementResult) -> None:
+    if history.exists():
+        text = history.read_text(encoding="utf-8").rstrip()
+    else:
+        text = "# 自動改善履歴\n\nマージ済みの自動改善PRで扱ったタスクを記録します。"
+    entry = f"- {date.today().isoformat()}: {task} — {result.summary}"
+    history.write_text(f"{text}\n{entry}\n", encoding="utf-8")
 
 
 def build_context(task: str) -> str:
@@ -123,6 +160,7 @@ def build_context(task: str) -> str:
         "app.py",
         "tests/test_smoke.py",
         "IMPROVEMENT_BACKLOG.md",
+        "AUTO_IMPROVEMENT_HISTORY.md",
     ]
     sections = [f"Selected task:\n{task}\n"]
     for path in files:
@@ -232,7 +270,8 @@ def main() -> int:
     parser.add_argument("--task-path", default=os.getenv("AUTO_IMPROVEMENT_TASK_PATH", ""))
     args = parser.parse_args()
 
-    task = pick_task(Path(args.backlog))
+    backlog = Path(args.backlog)
+    task = pick_task(backlog)
     write_optional(args.task_path, task)
 
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -245,6 +284,8 @@ def main() -> int:
     try:
         result = run_ai(task, args.model, api_key)
         apply_result(result)
+        mark_task_done(backlog, task)
+        append_history(HISTORY_FILE, task, result)
     except Exception as exc:
         message = f"AI improvement was skipped safely: {exc}"
         print(message)

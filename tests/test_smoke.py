@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pandas as pd
 
 import app
+import scripts.auto_improve as auto_improve
 
 
 class AppSmokeTests(unittest.TestCase):
@@ -65,6 +68,41 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(ids[0], 2)
         self.assertIn(3, ids[:2])
         self.assertCountEqual(ids, [1, 2, 3])
+
+    def test_auto_improve_skips_recent_history_tasks(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backlog = root / "IMPROVEMENT_BACKLOG.md"
+            history = root / "AUTO_IMPROVEMENT_HISTORY.md"
+            backlog.write_text(
+                "- [ ] First safe task\n"
+                "- [ ] Second safe task\n",
+                encoding="utf-8",
+            )
+            history.write_text("- 2026-05-25: First safe task\n", encoding="utf-8")
+
+            self.assertEqual(auto_improve.pick_task(backlog, history), "Second safe task")
+
+    def test_auto_improve_marks_task_done_and_records_history(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backlog = root / "IMPROVEMENT_BACKLOG.md"
+            history = root / "AUTO_IMPROVEMENT_HISTORY.md"
+            task = "Improve a small label"
+            backlog.write_text(f"- [ ] {task}\n", encoding="utf-8")
+            result = auto_improve.ImprovementResult(
+                summary="Changed one label.",
+                safety="UI text only.",
+                tests=["not run"],
+                human_check=["read the label"],
+                files=[],
+            )
+
+            auto_improve.mark_task_done(backlog, task)
+            auto_improve.append_history(history, task, result)
+
+            self.assertIn(f"- [x] {task}", backlog.read_text(encoding="utf-8"))
+            self.assertIn(task, history.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
