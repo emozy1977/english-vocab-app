@@ -44,6 +44,13 @@ jobs:
           AUTO_IMPROVEMENT_TASK_PATH: ${{ runner.temp }}/auto-improvement-task.txt
         run: python scripts/auto_improve.py --backlog IMPROVEMENT_BACKLOG.md
 
+      - name: Show AI improvement summary
+        if: always()
+        run: |
+          if [ -s "${{ runner.temp }}/auto-improvement-pr.md" ]; then
+            cat "${{ runner.temp }}/auto-improvement-pr.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Check generated changes
         id: diff
         run: |

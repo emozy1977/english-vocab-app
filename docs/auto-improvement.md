@@ -16,7 +16,7 @@
 GitHubリポジトリの `Settings` → `Secrets and variables` → `Actions` に設定します。
 
 - `OPENAI_API_KEY`: 自動改善を実行するためのOpenAI APIキーです。これが未設定の場合、workflowは動きますが変更を作りません。
-- `AUTO_IMPROVE_MODEL`: 任意です。未設定の場合は `gpt-5.4-mini` を使います。
+- `AUTO_IMPROVE_MODEL`: 任意です。未設定の場合は `gpt-5-mini` を使います。指定したモデルで失敗した場合は、スクリプトが安全な候補モデルに切り替えます。
 
 通常のアプリ用secretsである `SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`、`APP_PASSWORD` はStreamlit Cloud側に設定します。GitHub Actionsの自動改善には不要です。
 

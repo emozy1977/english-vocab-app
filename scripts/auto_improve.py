@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BACKLOG = ROOT / "IMPROVEMENT_BACKLOG.md"
+DEFAULT_MODEL = "gpt-5-mini"
+FALLBACK_MODELS = ("gpt-5-mini", "gpt-4.1-mini")
 
 ALLOWED_EXACT_PATHS = {
     "app.py",
@@ -184,7 +186,13 @@ def write_optional(path_text: str | None, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def run_ai(task: str, model: str, api_key: str) -> ImprovementResult:
+def candidate_models(model: str) -> list[str]:
+    models = [model] if model else []
+    models.extend(FALLBACK_MODELS)
+    return list(dict.fromkeys(models))
+
+
+def run_ai_once(task: str, model: str, api_key: str) -> ImprovementResult:
     from openai import OpenAI
 
     prompt = build_context(task)
@@ -204,10 +212,22 @@ def run_ai(task: str, model: str, api_key: str) -> ImprovementResult:
     return response.output_parsed
 
 
+def run_ai(task: str, model: str, api_key: str) -> ImprovementResult:
+    errors: list[str] = []
+    for candidate in candidate_models(model):
+        try:
+            print(f"Trying AI model: {candidate}")
+            return run_ai_once(task, candidate, api_key)
+        except Exception as exc:
+            errors.append(f"{candidate}: {exc}")
+            print(f"AI model failed: {candidate}: {exc}")
+    raise RuntimeError("All AI model attempts failed. " + " | ".join(errors))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create one safe AI-assisted improvement.")
     parser.add_argument("--backlog", default=str(DEFAULT_BACKLOG))
-    parser.add_argument("--model", default=os.getenv("AUTO_IMPROVE_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini")
+    parser.add_argument("--model", default=os.getenv("AUTO_IMPROVE_MODEL") or os.getenv("OPENAI_MODEL") or DEFAULT_MODEL)
     parser.add_argument("--summary-path", default=os.getenv("AUTO_IMPROVEMENT_SUMMARY_PATH", ""))
     parser.add_argument("--task-path", default=os.getenv("AUTO_IMPROVEMENT_TASK_PATH", ""))
     args = parser.parse_args()
@@ -222,8 +242,15 @@ def main() -> int:
         write_optional(args.summary_path, pr_body(task, None, message))
         return 0
 
-    result = run_ai(task, args.model, api_key)
-    apply_result(result)
+    try:
+        result = run_ai(task, args.model, api_key)
+        apply_result(result)
+    except Exception as exc:
+        message = f"AI improvement was skipped safely: {exc}"
+        print(message)
+        write_optional(args.summary_path, pr_body(task, None, message))
+        return 0
+
     write_optional(args.summary_path, pr_body(task, result))
     print(f"Applied AI improvement for task: {task}")
     return 0
