@@ -371,6 +371,19 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
+
+    # 追加: 現在のカード位置を分かりやすく表示する
+    ids = mixed_ids(df)
+    try:
+        if ids and int(row["id"]) in ids:
+            pos = ids.index(int(row["id"])) + 1
+            total = len(ids)
+            st.caption(f"カード {pos} / {total}")
+        else:
+            st.caption("カード - / -")
+    except Exception:
+        st.caption("カード - / -")
+
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
