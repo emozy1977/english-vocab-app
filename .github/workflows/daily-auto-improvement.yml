@@ -57,6 +57,10 @@ jobs:
           if git diff --quiet; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No changes were generated. Skipping PR."
+            {
+              printf '\n%s\n' '## PR作成'
+              printf '%s\n' '- 変更が生成されなかったため、PRは作成しませんでした。'
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             task_text=""
@@ -68,31 +72,72 @@ jobs:
 
       - name: Run smoke tests after changes
         if: steps.diff.outputs.changed == 'true'
-        run: python -B -m unittest discover -s tests
+        id: post_tests
+        run: |
+          set +e
+          python -B -m unittest discover -s tests
+          status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+            {
+              printf '\n%s\n' '## 変更後テスト'
+              printf '%s\n' '- 成功: `python -B -m unittest discover -s tests`'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+            {
+              printf '\n%s\n' '## 変更後テスト'
+              printf '%s\n' '- 失敗: `python -B -m unittest discover -s tests`'
+              printf '%s\n' '- 安全のため、この実行ではPRを作成しません。'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
 
       - name: Create branch and commit
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.post_tests.outputs.passed == 'true'
         id: commit
         env:
           TASK_TITLE: ${{ steps.diff.outputs.task }}
         run: |
+          set +e
           branch="auto-improve/${GITHUB_RUN_ID}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch -c "$branch"
           git add -A
           git commit -m "Auto improvement: ${TASK_TITLE:-daily safe improvement}"
+          commit_status=$?
+          if [ "$commit_status" -ne 0 ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            {
+              printf '\n%s\n' '## PR作成'
+              printf '%s\n' '- コミット作成に失敗したため、PRは作成しませんでした。'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           git push --set-upstream origin "$branch"
+          push_status=$?
+          if [ "$push_status" -ne 0 ]; then
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            {
+              printf '\n%s\n' '## PR作成'
+              printf '%s\n' '- ブランチpushに失敗したため、PRは作成しませんでした。'
+              printf '%s\n' '- リポジトリの Actions permissions が read/write になっているか確認してください。'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Open pull request
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.post_tests.outputs.passed == 'true' && steps.commit.outputs.pushed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           BRANCH_NAME: ${{ steps.commit.outputs.branch }}
           TASK_TITLE: ${{ steps.diff.outputs.task }}
           BODY_FILE: ${{ runner.temp }}/auto-improvement-pr.md
         run: |
+          set +e
           if [ ! -s "$BODY_FILE" ]; then
             {
               printf '%s\n' '## 改善内容'
@@ -111,3 +156,17 @@ jobs:
             --head "$BRANCH_NAME" \
             --title "Auto improvement: ${TASK_TITLE:-daily safe improvement}" \
             --body-file "$BODY_FILE"
+          pr_status=$?
+          if [ "$pr_status" -eq 0 ]; then
+            {
+              printf '\n%s\n' '## PR作成'
+              printf '%s\n' '- 成功: 自動改善PRを作成しました。'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              printf '\n%s\n' '## PR作成'
+              printf '%s\n' '- PR作成に失敗しました。'
+              printf '%s\n' '- push済みブランチが残っている可能性があります。Actionsログを確認してください。'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit 0
