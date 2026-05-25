@@ -52,9 +52,11 @@ jobs:
             echo "No changes were generated. Skipping PR."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "task<<EOF" >> "$GITHUB_OUTPUT"
-            cat "${{ runner.temp }}/auto-improvement-task.txt" >> "$GITHUB_OUTPUT" || true
-            echo "EOF" >> "$GITHUB_OUTPUT"
+            task_text=""
+            if [ -f "${{ runner.temp }}/auto-improvement-task.txt" ]; then
+              task_text="$(tr '\n' ' ' < "${{ runner.temp }}/auto-improvement-task.txt" | sed 's/[[:space:]]*$//')"
+            fi
+            echo "task=$task_text" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run smoke tests after changes
@@ -85,20 +87,17 @@ jobs:
           BODY_FILE: ${{ runner.temp }}/auto-improvement-pr.md
         run: |
           if [ ! -s "$BODY_FILE" ]; then
-            cat > "$BODY_FILE" <<'EOF'
-          ## 改善内容
-          - 自動改善スクリプトが小さな変更を作成しました。
-
-          ## なぜ安全か
-          - smoke test通過後だけPRを作成しています。
-          - 本番ブランチへ直接pushしていません。
-
-          ## 実行したテスト結果
-          - python -B -m unittest discover -s tests
-
-          ## 人間が確認すべき点
-          - iPhoneで画面表示と主要操作を確認してください。
-          EOF
+            {
+              printf '%s\n' '## 改善内容'
+              printf '%s\n' '- 自動改善スクリプトが小さな変更を作成しました。'
+              printf '\n%s\n' '## なぜ安全か'
+              printf '%s\n' '- smoke test通過後だけPRを作成しています。'
+              printf '%s\n' '- 本番ブランチへ直接pushしていません。'
+              printf '\n%s\n' '## 実行したテスト結果'
+              printf '%s\n' '- python -B -m unittest discover -s tests'
+              printf '\n%s\n' '## 人間が確認すべき点'
+              printf '%s\n' '- iPhoneで画面表示と主要操作を確認してください。'
+            } > "$BODY_FILE"
           fi
           gh pr create \
             --base main \
