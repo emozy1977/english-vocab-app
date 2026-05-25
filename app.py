@@ -107,7 +107,7 @@ def save_stats(row: pd.Series) -> None:
             "correct_count": int(row["correct_count"]),
             "wrong_count": int(row["wrong_count"]),
             "last_studied": str(row["last_studied"]),
-        }).eq("id", int(row["id"])).execute()
+        }).eq("id", int(row["id"])) .execute()
         return
     save_words(st.session_state.get(SESSION_WORDS_KEY, pd.DataFrame()))
 
@@ -368,6 +368,12 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     if st.session_state.get(viewed_key) != int(row["id"]):
         st.session_state[viewed_key] = int(row["id"])
         st.session_state[reveal_key] = False
+
+    # Show a short message if we have a stored last action message (e.g. after skipping to next)
+    last_msg_key = "study_last_message"
+    if st.session_state.get(last_msg_key):
+        st.info(st.session_state.pop(last_msg_key))
+
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
@@ -388,7 +394,19 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
         st.rerun()
     if st.button("次のカード", width="stretch"):
-        st.session_state[key] = next_id(df, int(row["id"]))
+        next_val = next_id(df, int(row["id"]))
+        # Prepare a short informative message about what the next card will be,
+        # so after rerun the user can see the state change clearly.
+        if next_val is None:
+            st.session_state[last_msg_key] = "次のカードはありません。"
+            st.session_state[key] = None
+        else:
+            next_row = row_by_id(df, next_val)
+            if next_row is not None:
+                st.session_state[last_msg_key] = f"次のカード: {next_row['word']} ・ Lv {next_row['difficulty']}"
+            else:
+                st.session_state[last_msg_key] = "次のカードに移動しました。"
+            st.session_state[key] = next_val
         st.session_state[reveal_key] = False
         st.rerun()
     return df
