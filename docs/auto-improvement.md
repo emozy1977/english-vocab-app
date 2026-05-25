@@ -7,7 +7,7 @@
 1. GitHub Actionsが毎日1回起動します。
 2. `IMPROVEMENT_BACKLOG.md` から安全な未完了タスクを1つ選びます。
 3. `scripts/auto_improve.py` がOpenAI APIで小さな変更案を作ります。
-4. 変更が作れたら、選んだタスクを `IMPROVEMENT_BACKLOG.md` で完了済みにし、`AUTO_IMPROVEMENT_HISTORY.md` に記録します。
+4. 変更が作れたら、選んだタスクを `IMPROVEMENT_BACKLOG.md` で完了済みにし、`AUTO_IMPROVEMENT_HISTORY.md` に記録します。同日に手動実行を繰り返した場合も、GitHub Actionsの実行IDを使って別タスクを選びやすくします。
 5. smoke testを実行します。
 6. テスト成功時だけ `auto-improve/<run_id>` ブランチをpushし、PRを作成します。
 7. テスト失敗時、または変更がない時はPRを作りません。

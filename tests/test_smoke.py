@@ -81,7 +81,17 @@ class AppSmokeTests(unittest.TestCase):
             )
             history.write_text("- 2026-05-25: First safe task\n", encoding="utf-8")
 
-            self.assertEqual(auto_improve.pick_task(backlog, history), "Second safe task")
+            self.assertEqual(auto_improve.pick_task(backlog, history, offset=0), "Second safe task")
+
+    def test_auto_improve_reads_history_task_without_summary_suffix(self) -> None:
+        with TemporaryDirectory() as tmp:
+            history = Path(tmp) / "AUTO_IMPROVEMENT_HISTORY.md"
+            history.write_text(
+                "- 2026-05-26: First safe task — Already handled.\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(auto_improve.recent_history_tasks(history), {"First safe task"})
 
     def test_auto_improve_marks_task_done_and_records_history(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -115,11 +115,18 @@ def recent_history_tasks(history: Path, limit: int = 20) -> set[str]:
     for line in history.read_text(encoding="utf-8").splitlines():
         match = re.match(r"\s*-\s*\d{4}-\d{2}-\d{2}:\s*(.+)", line)
         if match:
-            tasks.append(match.group(1).strip())
+            tasks.append(match.group(1).split(" — ", 1)[0].strip())
     return set(tasks[-limit:])
 
 
-def pick_task(backlog: Path, history: Path = HISTORY_FILE) -> str:
+def selection_offset() -> int:
+    raw = os.getenv("AUTO_IMPROVE_TASK_OFFSET") or os.getenv("GITHUB_RUN_ID") or ""
+    if raw.isdigit():
+        return int(raw)
+    return date.today().toordinal() - 1
+
+
+def pick_task(backlog: Path, history: Path = HISTORY_FILE, offset: int | None = None) -> str:
     tasks: list[str] = []
     for line in backlog.read_text(encoding="utf-8").splitlines():
         match = re.match(r"\s*-\s*\[\s\]\s*(.+)", line)
@@ -130,7 +137,7 @@ def pick_task(backlog: Path, history: Path = HISTORY_FILE) -> str:
     recent = recent_history_tasks(history)
     fresh_tasks = [task for task in tasks if task not in recent]
     candidates = fresh_tasks or tasks
-    return candidates[(date.today().toordinal() - 1) % len(candidates)]
+    return candidates[(selection_offset() if offset is None else offset) % len(candidates)]
 
 
 def mark_task_done(backlog: Path, task: str) -> None:
