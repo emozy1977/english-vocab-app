@@ -107,7 +107,7 @@ def save_stats(row: pd.Series) -> None:
             "correct_count": int(row["correct_count"]),
             "wrong_count": int(row["wrong_count"]),
             "last_studied": str(row["last_studied"]),
-        }).eq("id", int(row["id"])).execute()
+        }).eq("id", int(row["id"])) .execute()
         return
     save_words(st.session_state.get(SESSION_WORDS_KEY, pd.DataFrame()))
 
@@ -358,6 +358,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
+    status_key = "study_status_msg"
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id(df)
         st.session_state[reveal_key] = False
@@ -368,6 +369,9 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     if st.session_state.get(viewed_key) != int(row["id"]):
         st.session_state[viewed_key] = int(row["id"])
         st.session_state[reveal_key] = False
+    # Show one-time status message if present (e.g. after Next button)
+    if status_key in st.session_state:
+        st.info(st.session_state.pop(status_key))
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
     st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
@@ -388,8 +392,31 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
         st.rerun()
     if st.button("次のカード", width="stretch"):
-        st.session_state[key] = next_id(df, int(row["id"]))
+        # compute next id and a short status message describing the new card
+        next_card = next_id(df, int(row["id"]))
+        st.session_state[key] = next_card
         st.session_state[reveal_key] = False
+        # Build an informative one-time message for the newly selected card
+        if next_card is None:
+            st.session_state[status_key] = "次のカードはありません。"
+        else:
+            ids = mixed_ids(df)
+            total = len(ids)
+            try:
+                pos = ids.index(next_card) + 1
+            except ValueError:
+                pos = '?' 
+            next_row = row_by_id(df, int(next_card))
+            # categorize: new / difficult / regular
+            scored = with_scores(pd.DataFrame([next_row]))
+            r = scored.iloc[0]
+            if (r["_correct"] + r["_wrong"]) == 0:
+                label = "新規"
+            elif r["weakness_score"] > 0:
+                label = "苦手"
+            else:
+                label = "通常"
+            st.session_state[status_key] = f"次のカードに移動しました — {label} ({pos}/{total})"
         st.rerun()
     return df
 
