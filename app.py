@@ -397,8 +397,18 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         next_id_val = next_id(df, int(row["id"]))
         next_row = row_by_id(df, next_id_val) if next_id_val is not None else None
         if next_row is not None:
-            # Build a short message containing the next word and a couple of hints
-            msg = f"次のカード: {next_row['word']} ・ {next_row['part_of_speech']} ・ Lv {next_row['difficulty']}"
+            # Determine a simple classification for the next card to give the user immediate context
+            correct = int(next_row.get("correct_count") or 0)
+            wrong = int(next_row.get("wrong_count") or 0)
+            weakness = wrong - correct
+            if correct + wrong == 0:
+                kind = "🔰 新規"
+            elif weakness > 0:
+                kind = f"🔥 苦手（苦手数 {weakness}）"
+            else:
+                kind = "✅ 通常"
+            last = next_row.get("last_studied") or "-"
+            msg = f"次のカード: {next_row['word']} ・ {next_row['part_of_speech']} ・ Lv {next_row['difficulty']} ・ {kind} ・ 最終 {last}"
         else:
             msg = "次のカードに移動しました。"
         st.session_state["study_flash"] = msg
