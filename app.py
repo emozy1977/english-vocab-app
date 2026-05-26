@@ -11,8 +11,9 @@ import pandas as pd
 import streamlit as st
 
 DATA_FILE = Path(__file__).with_name("words.csv")
-COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]
+COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]
 COUNT_COLUMNS = ["correct_count", "wrong_count"]
+BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
@@ -21,16 +22,16 @@ PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
 
 SAMPLE_WORDS = [
-    [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", 0, 0, ""],
-    [2, "consolidate", "kun-SOL-ih-dayt", "verb", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "Business", "4", 0, 0, ""],
-    [3, "appropriate", "uh-PROH-pree-uht", "adjective", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "Academic", "3", 0, 0, ""],
-    [4, "implement", "IM-pluh-ment", "verb", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "Business", "3", 0, 0, ""],
-    [5, "overlook", "oh-ver-LOOK", "verb", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "Daily", "3", 0, 0, ""],
-    [6, "fatigue", "fuh-TEEG", "noun", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "Health", "2", 0, 0, ""],
-    [7, "retention", "ree-TEN-shun", "noun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "Learning", "4", 0, 0, ""],
-    [8, "elaborate", "ih-LAB-uh-rayt", "verb", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "Academic", "3", 0, 0, ""],
-    [9, "conversely", "KON-ver-slee", "adverb", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "Academic", "4", 0, 0, ""],
-    [10, "recurrent", "ree-KUR-unt", "adjective", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "Academic", "4", 0, 0, ""],
+    [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", False, 0, 0, ""],
+    [2, "consolidate", "kun-SOL-ih-dayt", "verb", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "Business", "4", False, 0, 0, ""],
+    [3, "appropriate", "uh-PROH-pree-uht", "adjective", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "Academic", "3", False, 0, 0, ""],
+    [4, "implement", "IM-pluh-ment", "verb", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "Business", "3", False, 0, 0, ""],
+    [5, "overlook", "oh-ver-LOOK", "verb", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "Daily", "3", False, 0, 0, ""],
+    [6, "fatigue", "fuh-TEEG", "noun", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "Health", "2", False, 0, 0, ""],
+    [7, "retention", "ree-TEN-shun", "noun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "Learning", "4", False, 0, 0, ""],
+    [8, "elaborate", "ih-LAB-uh-rayt", "verb", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "Academic", "3", False, 0, 0, ""],
+    [9, "conversely", "KON-ver-slee", "adverb", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "Academic", "4", False, 0, 0, ""],
+    [10, "recurrent", "ree-KUR-unt", "adjective", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "Academic", "4", False, 0, 0, ""],
 ]
 
 
@@ -60,11 +61,17 @@ def normalize_pos(value: object) -> str:
     return value if value in PARTS_OF_SPEECH_SET else "other"
 
 
+def normalize_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on", "checked"}
+
+
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in COLUMNS:
         if col not in df.columns:
-            df[col] = 0 if col in COUNT_COLUMNS else ""
+            df[col] = False if col in BOOL_COLUMNS else 0 if col in COUNT_COLUMNS else ""
     df = df[COLUMNS].fillna("")
     if df.empty:
         df = pd.DataFrame(SAMPLE_WORDS, columns=COLUMNS)
@@ -78,6 +85,8 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     df["difficulty"] = df["difficulty"].astype(str).replace({"": "3"})
     df["part_of_speech"] = df["part_of_speech"].apply(normalize_pos)
+    for col in BOOL_COLUMNS:
+        df[col] = df[col].apply(normalize_bool)
     return df
 
 
@@ -248,18 +257,39 @@ def newest_first(df: pd.DataFrame) -> pd.DataFrame:
     return work.sort_values("_id_sort", ascending=False).drop(columns=["_id_sort"])
 
 
+def ids_by_frequency(df: pd.DataFrame, ordered: pd.DataFrame) -> tuple[list[int], list[int]]:
+    if ordered.empty:
+        return [], []
+    flags = df.set_index("id")["low_frequency"].apply(normalize_bool).to_dict()
+    normal: list[int] = []
+    reduced: list[int] = []
+    for value in ordered["id"].tolist():
+        word_id = int(value)
+        if flags.get(word_id, False):
+            reduced.append(word_id)
+        else:
+            normal.append(word_id)
+    return normal, reduced
+
+
 def mixed_ids(df: pd.DataFrame) -> list[int]:
     if df.empty:
         return []
     scored = with_scores(df)
     new_mask = (scored["_correct"] + scored["_wrong"]) == 0
     difficult_mask = scored["weakness_score"] > 0
+    new_normal, new_reduced = ids_by_frequency(scored, newest_first(scored[new_mask]))
+    difficult_normal, difficult_reduced = ids_by_frequency(scored, priority(scored[~new_mask & difficult_mask]))
+    regular_normal, regular_reduced = ids_by_frequency(scored, priority(scored[~new_mask & ~difficult_mask]))
     buckets = {
-        "difficult": [int(x) for x in priority(scored[difficult_mask])["id"].tolist()],
-        "new": [int(x) for x in newest_first(scored[new_mask])["id"].tolist()],
-        "regular": [int(x) for x in priority(scored[~new_mask & ~difficult_mask])["id"].tolist()],
+        "new": new_normal,
+        "difficult": difficult_normal,
+        "regular": regular_normal,
+        "new_reduced": new_reduced,
+        "difficult_reduced": difficult_reduced,
+        "regular_reduced": regular_reduced,
     }
-    order = ["difficult", "new", "difficult", "regular"]
+    order = ["new", "difficult", "regular", "new_reduced", "difficult_reduced", "regular_reduced"]
     ids: list[int] = []
     while any(buckets.values()):
         for name in order:
@@ -292,12 +322,14 @@ def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
     df.loc[mask, "last_studied"] = today()
     df = normalize_df(df)
     row = df[df["id"] == word_id].iloc[0]
-    # Persist the single-row stats change using centralized logic
-    save_stats(row)
+    if supabase_enabled():
+        save_stats(row)
+    else:
+        save_words(df)
     return set_words(df)
 
 
-def upsert_word(df: pd.DataFrame, values: dict[str, str]) -> tuple[pd.DataFrame, bool]:
+def upsert_word(df: pd.DataFrame, values: dict[str, object]) -> tuple[pd.DataFrame, bool]:
     df = df.copy()
     normalized_word = norm(values["word"])
     mask = df["word"].astype(str).str.strip().str.lower() == normalized_word
@@ -332,9 +364,10 @@ def render_card(row, show_answer: bool = True) -> None:
         """
     else:
         answer_html = '<div class="answer-placeholder">日本語訳はまだ隠れています。</div>'
+    frequency_pill = '<span class="pill">頻度低</span>' if normalize_bool(row.get("low_frequency", False)) else ""
     st.markdown(f"""
     <div class="word-card">
-      <div><span class="pill">{esc(row['category'])}</span><span class="pill">{esc(row['part_of_speech'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
+      <div><span class="pill">{esc(row['category'])}</span><span class="pill">{esc(row['part_of_speech'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span>{frequency_pill}</div>
       <div class="word-title">{esc(row['word'])}</div>
       <div class="pronunciation">{esc(row['pronunciation'])}</div>
       <div class="example-en">{esc(row['example_en'])}</div>
@@ -356,15 +389,16 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
         example_ja = st.text_area("例文の日本語訳", height=90)
         category = st.text_input("カテゴリ", value="Uncategorized")
         difficulty = st.selectbox("難易度", ["1", "2", "3", "4", "5"], index=2)
+        low_frequency = st.checkbox("この単語の出題頻度を下げる")
         submitted = st.form_submit_button("保存する")
     if submitted:
         if not word.strip() or not meaning.strip():
             st.error("英単語と日本語の意味は必須です。")
         else:
-            df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty})
+            df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty, "low_frequency": low_frequency})
             st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
     with st.expander("登録済み単語"):
-        st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "correct_count", "wrong_count", "last_studied"]], width="stretch", hide_index=True)
+        st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日"}), width="stretch", hide_index=True)
     return df
 
 
@@ -384,7 +418,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
-    st.caption("苦手数（不正解 - 正解）が高い単語を優先しつつ、新しい単語も混ぜて出します。")
+    st.caption("新しい単語を先に出し、その後に苦手数（不正解 - 正解）が高い単語を出します。頻度低の単語も後半に回して必ず混ぜます。")
     render_card(row, show_answer=show_answer)
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
@@ -450,7 +484,7 @@ def review_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1.metric("単語数", len(df))
     c2.metric("不正解合計", int(df["wrong_count"].sum()))
     st.caption("苦手数（不正解 - 正解）が多い順に並びます。")
-    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied", "category", "difficulty"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "weakness_score": "苦手数", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日", "category": "カテゴリ", "difficulty": "難易度"}), width="stretch", hide_index=True)
+    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied", "category", "difficulty", "low_frequency"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "weakness_score": "苦手数", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低"}), width="stretch", hide_index=True)
     return df
 
 

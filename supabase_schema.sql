@@ -8,6 +8,7 @@ create table if not exists public.words (
   example_ja text not null default '',
   category text not null default 'Uncategorized',
   difficulty text not null default '3',
+  low_frequency boolean not null default false,
   correct_count integer not null default 0,
   wrong_count integer not null default 0,
   last_studied text not null default '',
@@ -17,6 +18,9 @@ create table if not exists public.words (
 
 alter table public.words
 add column if not exists part_of_speech text not null default 'other';
+
+alter table public.words
+add column if not exists low_frequency boolean not null default false;
 
 notify pgrst, 'reload schema';
 

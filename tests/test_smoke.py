@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -28,6 +29,7 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(normalized.loc[0, "id"], 1)
         self.assertEqual(normalized.loc[0, "difficulty"], "3")
         self.assertEqual(normalized.loc[0, "part_of_speech"], "other")
+        self.assertFalse(bool(normalized.loc[0, "low_frequency"]))
         self.assertEqual(normalized.loc[0, "correct_count"], 0)
         self.assertEqual(normalized.loc[0, "wrong_count"], 0)
 
@@ -42,8 +44,8 @@ class AppSmokeTests(unittest.TestCase):
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "known", "", "other", "既知", "", "", "Test", "3", 5, 1, "2026-05-20"],
-                [2, "weak", "", "other", "苦手", "", "", "Test", "3", 1, 5, "2026-05-20"],
+                [1, "known", "", "other", "既知", "", "", "Test", "3", False, 5, 1, "2026-05-20"],
+                [2, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 5, "2026-05-20"],
             ],
             columns=app.COLUMNS,
         )
@@ -56,18 +58,52 @@ class AppSmokeTests(unittest.TestCase):
     def test_mixed_ids_includes_difficult_new_and_regular_words(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "regular", "", "other", "普通", "", "", "Test", "3", 2, 1, "2026-05-20"],
-                [2, "difficult", "", "other", "苦手", "", "", "Test", "3", 1, 4, "2026-05-20"],
-                [3, "new", "", "other", "新規", "", "", "Test", "3", 0, 0, ""],
+                [1, "regular", "", "other", "普通", "", "", "Test", "3", False, 2, 1, "2026-05-20"],
+                [2, "difficult", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
+                [3, "new", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
             ],
             columns=app.COLUMNS,
         )
 
         ids = app.mixed_ids(app.normalize_df(df))
 
-        self.assertEqual(ids[0], 2)
-        self.assertIn(3, ids[:2])
+        self.assertEqual(ids[:2], [3, 2])
         self.assertCountEqual(ids, [1, 2, 3])
+
+    def test_mixed_ids_places_low_frequency_words_later(self) -> None:
+        df = pd.DataFrame(
+            [
+                [1, "new_low", "", "other", "新規低頻度", "", "", "Test", "3", True, 0, 0, ""],
+                [2, "new_normal", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
+                [3, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        ids = app.mixed_ids(app.normalize_df(df))
+
+        self.assertEqual(ids, [2, 3, 1])
+
+    def test_update_stats_saves_updated_local_dataframe(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+        saved_frames: list[pd.DataFrame] = []
+
+        with (
+            patch.object(app, "supabase_enabled", return_value=False),
+            patch.object(app, "save_words", side_effect=lambda frame: saved_frames.append(frame.copy())),
+            patch.object(app, "set_words", side_effect=lambda frame: frame),
+        ):
+            updated = app.update_stats(df, 1, True)
+
+        self.assertEqual(int(updated.loc[0, "correct_count"]), 1)
+        self.assertEqual(int(saved_frames[0].loc[0, "correct_count"]), 1)
 
     def test_auto_improve_skips_recent_history_tasks(self) -> None:
         with TemporaryDirectory() as tmp:

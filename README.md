@@ -300,6 +300,7 @@ https://your-app-name.streamlit.app
 - `example_ja`: 例文の日本語訳
 - `category`: カテゴリ
 - `difficulty`: 難易度
+- `low_frequency`: 出題頻度を下げるフラグ
 - `correct_count`: 正解数
 - `wrong_count`: 不正解数
 - `last_studied`: 最終学習日
