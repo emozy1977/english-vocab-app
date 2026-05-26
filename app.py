@@ -311,6 +311,15 @@ def blank_sentence(example: str, word: str) -> str:
 
 
 def render_card(row, show_answer: bool = True) -> None:
+    # Determine if the card is for a newly added word (never studied)
+    try:
+        is_new = int(row.get("correct_count", 0)) + int(row.get("wrong_count", 0)) == 0
+    except Exception:
+        is_new = False
+
+    # Add an extra short hint pill for new words so users understand why they appear
+    new_pill_html = f'<span class="pill new-pill" title="新規：学習のために混ぜて出しています">新規</span>' if is_new else ""
+
     if show_answer:
         answer_html = f"""
       <div class="meaning">{esc(row['meaning_ja'])}</div>
@@ -320,7 +329,7 @@ def render_card(row, show_answer: bool = True) -> None:
         answer_html = '<div class="answer-placeholder">日本語訳はまだ隠れています。</div>'
     st.markdown(f"""
     <div class="word-card">
-      <div><span class="pill">{esc(row['category'])}</span><span class="pill">{esc(row['part_of_speech'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span></div>
+      <div><span class="pill">{esc(row['category'])}</span><span class="pill">{esc(row['part_of_speech'])}</span><span class="pill">Lv {esc(row['difficulty'])}</span>{new_pill_html}</div>
       <div class="word-title">{esc(row['word'])}</div>
       <div class="pronunciation">{esc(row['pronunciation'])}</div>
       <div class="example-en">{esc(row['example_en'])}</div>
@@ -609,6 +618,7 @@ def css() -> None:
       div[data-testid="stRadio"] label * { color:#172033!important; }
       .word-card,.quiz-card { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:1rem; box-shadow:0 8px 24px rgba(24,39,75,.08); margin:.4rem 0 1rem; }
       .pill { background:#eef6f1; color:#24533b; border:1px solid #d7ebdf; border-radius:999px; display:inline-flex; align-items:center; min-height:28px; padding:0 .65rem; font-size:.8rem; font-weight:700; margin-right:.4rem; }
+      .pill.new-pill { background:#fff4e5; color:#8a5a00; border-color:#f2d9b3; }
       .word-title { color:#111827; font-size:2.2rem; font-weight:800; line-height:1.05; overflow-wrap:anywhere; margin-top:.8rem; }
       .pronunciation,.example-ja,.stats-line,.hint-line { color:#596579; font-size:.95rem; line-height:1.55; margin-top:.5rem; overflow-wrap:anywhere; }
       .meaning { color:#182033; font-size:1.15rem; font-weight:700; margin-top:1rem; overflow-wrap:anywhere; }
