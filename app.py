@@ -102,14 +102,30 @@ def save_words(df: pd.DataFrame) -> None:
 
 
 def save_stats(row: pd.Series) -> None:
+    # Centralized persistence for a single-row stats update.
+    # For Supabase: update only the necessary fields.
+    # For CSV: load current file, update the matching row (by id) and save the CSV.
+    row_dict = row.to_dict() if isinstance(row, pd.Series) else dict(row)
     if supabase_enabled():
         supabase_client().table(SUPABASE_TABLE).update({
-            "correct_count": int(row["correct_count"]),
-            "wrong_count": int(row["wrong_count"]),
-            "last_studied": str(row["last_studied"]),
-        }).eq("id", int(row["id"])).execute()
+            "correct_count": int(row_dict.get("correct_count", 0)),
+            "wrong_count": int(row_dict.get("wrong_count", 0)),
+            "last_studied": str(row_dict.get("last_studied", "")),
+        }).eq("id", int(row_dict["id"])).execute()
         return
-    save_words(st.session_state.get(SESSION_WORDS_KEY, pd.DataFrame()))
+    # CSV mode: update the persisted CSV file with only the changed stats to avoid overwriting unintended session state
+    df = load_words()
+    df = normalize_df(df)
+    mask = df["id"] == int(row_dict["id"])
+    if mask.any():
+        df.loc[mask, "correct_count"] = int(row_dict.get("correct_count", 0))
+        df.loc[mask, "wrong_count"] = int(row_dict.get("wrong_count", 0))
+        df.loc[mask, "last_studied"] = str(row_dict.get("last_studied", ""))
+    else:
+        # If the row isn't present for some reason, append it.
+        append_df = normalize_df(pd.DataFrame([row_dict]))
+        df = pd.concat([df, append_df], ignore_index=True)
+    save_words(df)
 
 
 def set_words(df: pd.DataFrame) -> pd.DataFrame:
@@ -276,10 +292,8 @@ def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
     df.loc[mask, "last_studied"] = today()
     df = normalize_df(df)
     row = df[df["id"] == word_id].iloc[0]
-    if supabase_enabled():
-        save_stats(row)
-    else:
-        save_words(df)
+    # Persist the single-row stats change using centralized logic
+    save_stats(row)
     return set_words(df)
 
 
@@ -614,7 +628,7 @@ def css() -> None:
       .meaning { color:#182033; font-size:1.15rem; font-weight:700; margin-top:1rem; overflow-wrap:anywhere; }
       .example-en { background:#f7f9fc; border-left:4px solid #2f6fed; color:#1f2937; margin-top:1rem; padding:.8rem; line-height:1.55; overflow-wrap:anywhere; }
       .answer-placeholder { background:#f7f9fc; border:1px dashed #cbd5e1; border-radius:8px; color:#687385; font-size:.95rem; margin-top:.85rem; padding:.75rem; text-align:center; }
-      .quiz-label { color:#596579; font-size:.82rem; font-weight:700; }
+      .quiz-label { color:#596579; font-size:0.82rem; font-weight:700; }
       .quiz-prompt { color:#111827; font-size:1.25rem; font-weight:800; line-height:1.35; overflow-wrap:anywhere; }
       input, textarea, select { background:#fff!important; color:#172033!important; -webkit-text-fill-color:#172033!important; caret-color:#172033!important; border-color:#cbd5e1!important; font-size:16px!important; }
       input::placeholder, textarea::placeholder { color:#8a94a6!important; -webkit-text-fill-color:#8a94a6!important; opacity:1!important; }
