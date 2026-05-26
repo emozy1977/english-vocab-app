@@ -329,6 +329,20 @@ def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
     return set_words(df)
 
 
+def update_low_frequency(df: pd.DataFrame, word_id: int, low_frequency: bool) -> pd.DataFrame:
+    df = df.copy()
+    mask = df["id"] == word_id
+    if not mask.any():
+        return df
+    df.loc[mask, "low_frequency"] = bool(low_frequency)
+    df = normalize_df(df)
+    if supabase_enabled():
+        supabase_client().table(SUPABASE_TABLE).update({"low_frequency": bool(low_frequency)}).eq("id", int(word_id)).execute()
+    else:
+        save_words(df)
+    return set_words(df)
+
+
 def upsert_word(df: pd.DataFrame, values: dict[str, object]) -> tuple[pd.DataFrame, bool]:
     df = df.copy()
     normalized_word = norm(values["word"])
@@ -420,6 +434,16 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     st.subheader("学習カード")
     st.caption("新しい単語を先に出し、その後に苦手数（不正解 - 正解）が高い単語を出します。頻度低の単語も後半に回して必ず混ぜます。")
     render_card(row, show_answer=show_answer)
+    current_low_frequency = normalize_bool(row.get("low_frequency", False))
+    low_frequency = st.checkbox(
+        "この単語の出題頻度を下げる",
+        value=current_low_frequency,
+        key=f"study_low_frequency_{int(row['id'])}",
+    )
+    if low_frequency != current_low_frequency:
+        df = update_low_frequency(df, int(row["id"]), low_frequency)
+        st.toast("出題頻度の設定を保存しました。")
+        st.rerun()
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
             st.session_state[reveal_key] = True

@@ -105,6 +105,27 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(int(updated.loc[0, "correct_count"]), 1)
         self.assertEqual(int(saved_frames[0].loc[0, "correct_count"]), 1)
 
+    def test_update_low_frequency_saves_local_dataframe(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+        saved_frames: list[pd.DataFrame] = []
+
+        with (
+            patch.object(app, "supabase_enabled", return_value=False),
+            patch.object(app, "save_words", side_effect=lambda frame: saved_frames.append(frame.copy())),
+            patch.object(app, "set_words", side_effect=lambda frame: frame),
+        ):
+            updated = app.update_low_frequency(df, 1, True)
+
+        self.assertTrue(bool(updated.loc[0, "low_frequency"]))
+        self.assertTrue(bool(saved_frames[0].loc[0, "low_frequency"]))
+
     def test_auto_improve_skips_recent_history_tasks(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
