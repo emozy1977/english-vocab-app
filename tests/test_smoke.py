@@ -126,6 +126,37 @@ class AppSmokeTests(unittest.TestCase):
         self.assertTrue(bool(updated.loc[0, "low_frequency"]))
         self.assertTrue(bool(saved_frames[0].loc[0, "low_frequency"]))
 
+    def test_update_low_frequency_reports_missing_supabase_column(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        class BrokenQuery:
+            def update(self, values):
+                return self
+
+            def eq(self, column, value):
+                return self
+
+            def execute(self):
+                raise RuntimeError("Could not find the 'low_frequency' column")
+
+        class BrokenClient:
+            def table(self, name):
+                return BrokenQuery()
+
+        with (
+            patch.object(app, "supabase_enabled", return_value=True),
+            patch.object(app, "supabase_client", return_value=BrokenClient()),
+        ):
+            with self.assertRaises(app.LowFrequencySaveError):
+                app.update_low_frequency(df, 1, True)
+
     def test_auto_improve_skips_recent_history_tasks(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)

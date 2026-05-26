@@ -35,6 +35,10 @@ SAMPLE_WORDS = [
 ]
 
 
+class LowFrequencySaveError(RuntimeError):
+    pass
+
+
 def config(key: str, default: str = "") -> str:
     value = os.getenv(key, "").strip()
     if value:
@@ -337,7 +341,10 @@ def update_low_frequency(df: pd.DataFrame, word_id: int, low_frequency: bool) ->
     df.loc[mask, "low_frequency"] = bool(low_frequency)
     df = normalize_df(df)
     if supabase_enabled():
-        supabase_client().table(SUPABASE_TABLE).update({"low_frequency": bool(low_frequency)}).eq("id", int(word_id)).execute()
+        try:
+            supabase_client().table(SUPABASE_TABLE).update({"low_frequency": bool(low_frequency)}).eq("id", int(word_id)).execute()
+        except Exception as exc:
+            raise LowFrequencySaveError("Supabaseに low_frequency 列がまだありません。Supabase SQL Editorで supabase_schema.sql を実行してから、アプリを再読み込みしてください。") from exc
     else:
         save_words(df)
     return set_words(df)
@@ -441,9 +448,14 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         key=f"study_low_frequency_{int(row['id'])}",
     )
     if low_frequency != current_low_frequency:
-        df = update_low_frequency(df, int(row["id"]), low_frequency)
-        st.toast("出題頻度の設定を保存しました。")
-        st.rerun()
+        try:
+            df = update_low_frequency(df, int(row["id"]), low_frequency)
+        except LowFrequencySaveError as exc:
+            st.error(str(exc))
+            st.caption("保存はまだ完了していません。SQL実行後にもう一度チェックしてください。")
+        else:
+            st.toast("出題頻度の設定を保存しました。")
+            st.rerun()
     if not show_answer:
         if st.button("意味を表示", type="primary", width="stretch"):
             st.session_state[reveal_key] = True
