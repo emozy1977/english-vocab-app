@@ -538,7 +538,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
                 st.rerun()
             return df
         st.caption("もう一度入力して、正解できたら次へ進めます。")
-    with st.form(f"{mode}_form"):
+    with st.form(f"{mode}_form", clear_on_submit=True):
         answer = st.text_input("英単語を入力", key=answer_key)
         submitted = st.form_submit_button("判定")
     if submitted:
