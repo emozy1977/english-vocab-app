@@ -124,7 +124,7 @@ def save_stats(row: pd.Series) -> None:
             "correct_count": int(row_dict.get("correct_count", 0)),
             "wrong_count": int(row_dict.get("wrong_count", 0)),
             "last_studied": str(row_dict.get("last_studied", "")),
-        }).eq("id", int(row_dict["id"])).execute()
+        }).eq("id", int(row_dict["id"])) .execute()
         return
     # CSV mode: update the persisted CSV file with only the changed stats to avoid overwriting unintended session state
     df = load_words()
@@ -179,7 +179,7 @@ def render_pronunciation_button(word: object) -> None:
         f"""
         <button id="speak-word" type="button" aria-label="発音を再生">
           <span class="speaker-icon">▶</span>
-          <span>発音を聞く</span>
+          <span>発音</span>
         </button>
         <script>
           const button = document.getElementById("speak-word");
@@ -411,7 +411,7 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
         category = st.text_input("カテゴリ", value="Uncategorized")
         difficulty = st.selectbox("難易度", ["1", "2", "3", "4", "5"], index=2)
         low_frequency = st.checkbox("この単語の出題頻度を下げる")
-        submitted = st.form_submit_button("保存する")
+        submitted = st.form_submit_button("保存")
     if submitted:
         if not word.strip() or not meaning.strip():
             st.error("英単語と日本語の意味は必須です。")
@@ -457,7 +457,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
             st.toast("出題頻度の設定を保存しました。")
             st.rerun()
     if not show_answer:
-        if st.button("意味を表示", type="primary", width="stretch"):
+        if st.button("表示", type="primary", width="stretch"):
             st.session_state[reveal_key] = True
             st.rerun()
     c1, c2 = st.columns(2)
@@ -471,7 +471,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
         st.rerun()
-    if st.button("次のカード", width="stretch"):
+    if st.button("次へ", width="stretch"):
         st.session_state[key] = next_id(df, int(row["id"]))
         st.session_state[reveal_key] = False
         st.rerun()
@@ -496,14 +496,14 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     if result and result["id"] == int(row["id"]):
         (st.success if result["correct"] else st.error)(f"{'正解' if result['correct'] else '不正解'}です。正解: {result['expected']}")
         render_pronunciation_button(result["expected"])
-        if st.button("次の問題", type="primary", width="stretch"):
+        if st.button("次へ", type="primary", width="stretch"):
             st.session_state.pop(result_key, None)
             st.session_state[current_key] = next_id(available, int(row["id"]))
             st.rerun()
         return df
     with st.form(f"{mode}_form"):
         answer = st.text_input("英単語を入力")
-        submitted = st.form_submit_button("判定する")
+        submitted = st.form_submit_button("判定")
     if submitted:
         correct = norm(answer) == norm(row["word"])
         df = update_stats(df, int(row["id"]), correct)
@@ -640,7 +640,7 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
         difficulty = st.selectbox("難易度", ["3から5を中心にする", "1から2の基礎", "3の中級", "4から5の上級"], index=3)
         model = st.text_input("モデル", value=model_default)
         force = st.checkbox("今日すでに追加済みでも実行する")
-        submitted = st.form_submit_button("AIで今日分を追加", disabled=not bool(api_key))
+        submitted = st.form_submit_button("AI追加", disabled=not bool(api_key))
     if submitted:
         if last_ai_date() == today() and not force:
             st.info("今日はすでに追加済みです。")
@@ -654,7 +654,7 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
     missing_pos = int((df["part_of_speech"].apply(normalize_pos) == "other").sum())
     with st.expander("既存単語の品詞を補完"):
         st.write(f"品詞が未設定の単語: {missing_pos}語")
-        if st.button("AIで品詞を補完", type="primary", width="stretch", disabled=not bool(api_key) or missing_pos == 0):
+        if st.button("品詞補完", type="primary", width="stretch", disabled=not bool(api_key) or missing_pos == 0):
             try:
                 with st.spinner("AIが既存単語の品詞を判定しています..."):
                     df, changed = classify_existing_pos(df, model_default, api_key)
@@ -711,26 +711,33 @@ def css() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="英単語帳", page_icon="📚", layout="centered", initial_sidebar_state="collapsed")
     css()
     if not require_password():
         return
-    df = words_for_session()
     st.title("英単語帳")
-    st.caption(f"スマホのブラウザで使える英単語帳 ・ 保存先: {'Supabase' if supabase_enabled() else 'CSV'}")
-    page = st.radio("画面", ["学習", "筆記", "穴埋め", "復習", "AI追加", "登録"], horizontal=True, label_visibility="collapsed")
-    if page == "学習":
-        study_screen(df)
-    elif page == "筆記":
-        quiz_screen(df, "written")
-    elif page == "穴埋め":
-        quiz_screen(df, "cloze")
-    elif page == "復習":
-        review_screen(df)
-    elif page == "AI追加":
-        ai_screen(df)
+    df = words_for_session()
+
+    menu = st.sidebar.radio("モード", ["学習カード", "筆記問題", "穴埋め問題", "復習", "単語登録", "AI追加"], index=0)
+    st.sidebar.write(f"単語数: {len(df)}")
+
+    if menu == "学習カード":
+        df = study_screen(df)
+    elif menu == "筆記問題":
+        df = quiz_screen(df, "written")
+    elif menu == "穴埋め問題":
+        df = quiz_screen(df, "fill")
+    elif menu == "復習":
+        df = review_screen(df)
+    elif menu == "単語登録":
+        df = register_screen(df)
+    elif menu == "AI追加":
+        df = ai_screen(df)
+
+    # show storage info
+    if supabase_enabled():
+        st.caption("保存先: Supabase")
     else:
-        register_screen(df)
+        st.caption(f"保存先: {DATA_FILE}")
 
 
 if __name__ == "__main__":
