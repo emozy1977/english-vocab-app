@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 DATA_FILE = Path(__file__).with_name("words.csv")
 COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]
@@ -253,6 +254,36 @@ def render_pronunciation_button(word: object) -> None:
         </style>
         """,
         height=54,
+    )
+
+
+def enable_return_to_next() -> None:
+    components.html(
+        """
+        <script>
+          const parentDoc = window.parent.document;
+          if (parentDoc.__vocabReturnToNextHandler) {
+            parentDoc.removeEventListener("keydown", parentDoc.__vocabReturnToNextHandler);
+          }
+          parentDoc.__vocabReturnToNextHandler = (event) => {
+            if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) {
+              return;
+            }
+            const active = parentDoc.activeElement;
+            if (active && active.tagName === "TEXTAREA") {
+              return;
+            }
+            const nextButton = Array.from(parentDoc.querySelectorAll("button"))
+              .find((button) => button.innerText.trim() === "次へ" && !button.disabled);
+            if (nextButton) {
+              event.preventDefault();
+              nextButton.click();
+            }
+          };
+          parentDoc.addEventListener("keydown", parentDoc.__vocabReturnToNextHandler);
+        </script>
+        """,
+        height=0,
     )
 
 
@@ -531,6 +562,8 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             )
         render_pronunciation_button(result["expected"])
         if result["correct"]:
+            enable_return_to_next()
+            st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
             if st.button("次へ", type="primary", width="stretch"):
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
