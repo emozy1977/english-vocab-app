@@ -508,6 +508,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         return df
     current_key = f"{mode}_current_id"
     result_key = f"{mode}_result"
+    answer_key = f"{mode}_answer"
     if current_key not in st.session_state or row_by_id(available, st.session_state[current_key]) is None:
         st.session_state[current_key] = next_id(available)
     row = row_by_id(available, st.session_state[current_key])
@@ -529,13 +530,16 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
                 unsafe_allow_html=True,
             )
         render_pronunciation_button(result["expected"])
-        if st.button("次へ", type="primary", width="stretch"):
-            st.session_state.pop(result_key, None)
-            st.session_state[current_key] = next_id(available, int(row["id"]))
-            st.rerun()
-        return df
+        if result["correct"]:
+            if st.button("次へ", type="primary", width="stretch"):
+                st.session_state.pop(result_key, None)
+                st.session_state[answer_key] = ""
+                st.session_state[current_key] = next_id(available, int(row["id"]))
+                st.rerun()
+            return df
+        st.caption("もう一度入力して、正解できたら次へ進めます。")
     with st.form(f"{mode}_form"):
-        answer = st.text_input("英単語を入力")
+        answer = st.text_input("英単語を入力", key=answer_key)
         submitted = st.form_submit_button("判定")
     if submitted:
         correct = norm(answer) == norm(row["word"])
