@@ -287,6 +287,28 @@ def enable_return_to_next() -> None:
     )
 
 
+def focus_answer_input() -> None:
+    components.html(
+        """
+        <script>
+          const parentDoc = window.parent.document;
+          const focusAnswerInput = () => {
+            const inputs = Array.from(parentDoc.querySelectorAll("input"));
+            const answerInput = inputs.find((input) =>
+              input.getAttribute("aria-label") === "英単語を入力" && !input.disabled
+            );
+            if (answerInput) {
+              answerInput.focus({ preventScroll: true });
+            }
+          };
+          setTimeout(focusAnswerInput, 80);
+          setTimeout(focusAnswerInput, 300);
+        </script>
+        """,
+        height=0,
+    )
+
+
 def today() -> str:
     return date.today().isoformat()
 
@@ -574,6 +596,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     with st.form(f"{mode}_form", clear_on_submit=True):
         answer = st.text_input("英単語を入力", key=answer_key)
         submitted = st.form_submit_button("判定")
+    focus_answer_input()
     if submitted:
         correct = norm(answer) == norm(row["word"])
         df = update_stats(df, int(row["id"]), correct)
