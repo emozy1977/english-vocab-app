@@ -5,6 +5,7 @@ import json
 import os
 import re
 from datetime import date
+from difflib import SequenceMatcher
 from pathlib import Path
 
 import pandas as pd
@@ -168,6 +169,28 @@ def load_words() -> pd.DataFrame:
 
 def esc(value: object) -> str:
     return html.escape(str(value))
+
+
+def answer_diff_html(expected: object, actual: object) -> str:
+    expected_text = str(expected).strip()
+    actual_text = str(actual).strip()
+    if not actual_text:
+        return '<span class="diff-missing">未入力</span>'
+
+    pieces: list[str] = []
+    matcher = SequenceMatcher(None, actual_text.lower(), expected_text.lower())
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        actual_part = esc(actual_text[i1:i2])
+        expected_part = esc(expected_text[j1:j2])
+        if tag == "equal":
+            pieces.append(actual_part)
+        elif tag == "replace":
+            pieces.append(f'<span class="diff-wrong">{actual_part}</span>')
+        elif tag == "delete":
+            pieces.append(f'<span class="diff-extra">{actual_part}</span>')
+        elif tag == "insert":
+            pieces.append(f'<span class="diff-missing">[{expected_part}]</span>')
+    return "".join(pieces)
 
 
 def render_pronunciation_button(word: object) -> None:
@@ -495,6 +518,16 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     result = st.session_state.get(result_key)
     if result and result["id"] == int(row["id"]):
         (st.success if result["correct"] else st.error)(f"{'正解' if result['correct'] else '不正解'}です。正解: {result['expected']}")
+        if not result["correct"]:
+            st.markdown(
+                f"""
+                <div class="answer-review">
+                  <div class="answer-review-label">あなたの回答</div>
+                  <div class="answer-review-text">{answer_diff_html(result["expected"], result.get("answer", ""))}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         render_pronunciation_button(result["expected"])
         if st.button("次へ", type="primary", width="stretch"):
             st.session_state.pop(result_key, None)
@@ -507,7 +540,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     if submitted:
         correct = norm(answer) == norm(row["word"])
         df = update_stats(df, int(row["id"]), correct)
-        st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": row["word"]}
+        st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": row["word"], "answer": answer}
         st.rerun()
     return df
 
@@ -698,6 +731,12 @@ def css() -> None:
       .meaning { color:#182033; font-size:1.15rem; font-weight:700; margin-top:1rem; overflow-wrap:anywhere; }
       .example-en { background:#f7f9fc; border-left:4px solid #2f6fed; color:#1f2937; margin-top:1rem; padding:.8rem; line-height:1.55; overflow-wrap:anywhere; }
       .answer-placeholder { background:#f7f9fc; border:1px dashed #cbd5e1; border-radius:8px; color:#687385; font-size:.95rem; margin-top:.85rem; padding:.75rem; text-align:center; }
+      .answer-review { background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin:.8rem 0 1rem; padding:.8rem; }
+      .answer-review-label { color:#9a3412; font-size:.82rem; font-weight:800; margin-bottom:.35rem; }
+      .answer-review-text { color:#111827; font-size:1.15rem; font-weight:800; letter-spacing:0; overflow-wrap:anywhere; }
+      .diff-wrong { background:#fee2e2; border-bottom:3px solid #ef4444; border-radius:4px; color:#991b1b; padding:0 .08rem; }
+      .diff-extra { background:#fef3c7; border-bottom:3px solid #f59e0b; border-radius:4px; color:#92400e; padding:0 .08rem; }
+      .diff-missing { background:#dbeafe; border-bottom:3px solid #2f6fed; border-radius:4px; color:#1d4ed8; padding:0 .16rem; }
       .quiz-label { color:#596579; font-size:0.82rem; font-weight:700; }
       .quiz-prompt { color:#111827; font-size:1.25rem; font-weight:800; line-height:1.35; overflow-wrap:anywhere; }
       input, textarea, select { background:#fff!important; color:#172033!important; -webkit-text-fill-color:#172033!important; caret-color:#172033!important; border-color:#cbd5e1!important; font-size:16px!important; }

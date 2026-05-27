@@ -41,6 +41,18 @@ class AppSmokeTests(unittest.TestCase):
             "We need to _____ the plan quickly.",
         )
 
+    def test_answer_diff_html_highlights_spelling_mistakes(self) -> None:
+        html = app.answer_diff_html("implement", "implment")
+
+        self.assertIn("diff-missing", html)
+        self.assertIn("[e]", html)
+
+    def test_answer_diff_html_escapes_user_input(self) -> None:
+        html = app.answer_diff_html("test", "<test>")
+
+        self.assertIn("&lt;", html)
+        self.assertNotIn("<test>", html)
+
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [
