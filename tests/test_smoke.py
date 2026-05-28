@@ -151,6 +151,25 @@ class AppSmokeTests(unittest.TestCase):
         self.assertTrue(app.is_first_quiz_attempt({"id": 2, "correct": False}, 1))
         self.assertFalse(app.is_first_quiz_attempt({"id": 1, "correct": False}, 1))
 
+    def test_pushed_history_moves_word_to_end(self) -> None:
+        self.assertEqual(app.pushed_history([1, 2, 1], 2), [1, 2])
+
+    def test_pop_previous_id_skips_missing_words(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "one", "", "other", "1", "", "", "Test", "3", False, 0, 0, ""],
+                    [3, "three", "", "other", "3", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        previous_id, remaining = app.pop_previous_id([1, 2, 3], df)
+
+        self.assertEqual(previous_id, 3)
+        self.assertEqual(remaining, [1, 2])
+
     def test_update_stats_saves_updated_local_dataframe(self) -> None:
         df = app.normalize_df(
             pd.DataFrame(

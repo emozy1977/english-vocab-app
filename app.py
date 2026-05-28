@@ -416,6 +416,25 @@ def is_first_quiz_attempt(result: object, word_id: int) -> bool:
     return not isinstance(result, dict) or int(result.get("id", -1)) != int(word_id)
 
 
+def pushed_history(history: list[int], word_id: int, limit: int = 30) -> list[int]:
+    updated: list[int] = []
+    for value in history:
+        normalized_value = int(value)
+        if normalized_value != int(word_id) and normalized_value not in updated:
+            updated.append(normalized_value)
+    updated.append(int(word_id))
+    return updated[-limit:]
+
+
+def pop_previous_id(history: list[int], df: pd.DataFrame) -> tuple[int | None, list[int]]:
+    remaining = [int(value) for value in history]
+    while remaining:
+        previous = remaining.pop()
+        if row_by_id(df, previous) is not None:
+            return previous, remaining
+    return None, []
+
+
 def row_by_id(df: pd.DataFrame, word_id: int):
     rows = df[df["id"] == word_id]
     return None if rows.empty else rows.iloc[0]
@@ -610,6 +629,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     result_key = f"{mode}_result"
     answer_key = f"{mode}_answer"
     recent_key = f"{mode}_recent_ids"
+    history_key = f"{mode}_history_ids"
     if current_key not in st.session_state or row_by_id(available, st.session_state[current_key]) is None:
         st.session_state[current_key] = next_id_for_session(available, None, recent_key)
     row = row_by_id(available, st.session_state[current_key])
@@ -650,9 +670,20 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         if result["correct"]:
             enable_return_to_next()
             st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
-            if st.button("次へ", type="primary", width="stretch"):
+            c1, c2 = st.columns(2)
+            history = st.session_state.get(history_key, [])
+            if c1.button("前へ", width="stretch", disabled=not bool(history)):
+                previous_id, remaining_history = pop_previous_id(history, available)
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
+                st.session_state[history_key] = remaining_history
+                if previous_id is not None:
+                    st.session_state[current_key] = previous_id
+                st.rerun()
+            if c2.button("次へ", type="primary", width="stretch"):
+                st.session_state.pop(result_key, None)
+                st.session_state[answer_key] = ""
+                st.session_state[history_key] = pushed_history(history, int(row["id"]))
                 st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
                 st.rerun()
             return df
