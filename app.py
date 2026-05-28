@@ -387,6 +387,10 @@ def next_id(df: pd.DataFrame, current: int | None = None) -> int | None:
     return ids[(ids.index(current) + 1) % len(ids)]
 
 
+def is_first_quiz_attempt(result: object, word_id: int) -> bool:
+    return not isinstance(result, dict) or int(result.get("id", -1)) != int(word_id)
+
+
 def row_by_id(df: pd.DataFrame, word_id: int):
     rows = df[df["id"] == word_id]
     return None if rows.empty else rows.iloc[0]
@@ -568,7 +572,23 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     prompt = row["meaning_ja"] if mode == "written" else blank_sentence(row["example_en"], row["word"])
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
     st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
+    st.caption("新しい単語を先に出し、1回目で正解が多い単語や頻度低の単語は後半に回します。")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
+    current_low_frequency = normalize_bool(row.get("low_frequency", False))
+    low_frequency = st.checkbox(
+        "この単語の出題頻度を下げる",
+        value=current_low_frequency,
+        key=f"{mode}_low_frequency_{int(row['id'])}",
+    )
+    if low_frequency != current_low_frequency:
+        try:
+            df = update_low_frequency(df, int(row["id"]), low_frequency)
+        except LowFrequencySaveError as exc:
+            st.error(str(exc))
+            st.caption("保存はまだ完了していません。SQL実行後にもう一度チェックしてください。")
+        else:
+            st.toast("出題頻度の設定を保存しました。")
+            st.rerun()
     result = st.session_state.get(result_key)
     if result and result["id"] == int(row["id"]):
         (st.success if result["correct"] else st.error)(f"{'正解' if result['correct'] else '不正解'}です。正解: {result['expected']}")
@@ -599,7 +619,8 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     focus_answer_input()
     if submitted:
         correct = norm(answer) == norm(row["word"])
-        df = update_stats(df, int(row["id"]), correct)
+        if is_first_quiz_attempt(st.session_state.get(result_key), int(row["id"])):
+            df = update_stats(df, int(row["id"]), correct)
         st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": row["word"], "answer": answer}
         st.rerun()
     return df

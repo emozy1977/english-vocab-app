@@ -96,6 +96,25 @@ class AppSmokeTests(unittest.TestCase):
 
         self.assertEqual(ids, [2, 3, 1])
 
+    def test_mixed_ids_places_many_first_try_correct_words_later(self) -> None:
+        df = pd.DataFrame(
+            [
+                [1, "easy", "", "other", "簡単", "", "", "Test", "3", False, 8, 0, "2026-05-20"],
+                [2, "less_known", "", "other", "まだ浅い", "", "", "Test", "3", False, 1, 0, "2026-05-20"],
+                [3, "new", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        ids = app.mixed_ids(app.normalize_df(df))
+
+        self.assertEqual(ids, [3, 2, 1])
+
+    def test_is_first_quiz_attempt_only_counts_first_answer(self) -> None:
+        self.assertTrue(app.is_first_quiz_attempt(None, 1))
+        self.assertTrue(app.is_first_quiz_attempt({"id": 2, "correct": False}, 1))
+        self.assertFalse(app.is_first_quiz_attempt({"id": 1, "correct": False}, 1))
+
     def test_update_stats_saves_updated_local_dataframe(self) -> None:
         df = app.normalize_df(
             pd.DataFrame(
