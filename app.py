@@ -697,6 +697,22 @@ def set_last_ai_date() -> None:
         Path(".last_ai_words_date").write_text(today())
 
 
+def saved_ai_category() -> str:
+    if supabase_enabled():
+        rows = supabase_client().table(SUPABASE_SETTINGS_TABLE).select("value").eq("key", "ai_category_hint").limit(1).execute().data or []
+        return rows[0]["value"] if rows else ""
+    marker = Path(".ai_category_hint")
+    return marker.read_text().strip() if marker.exists() else ""
+
+
+def set_saved_ai_category(category: str) -> None:
+    value = category.strip()
+    if supabase_enabled():
+        supabase_client().table(SUPABASE_SETTINGS_TABLE).upsert({"key": "ai_category_hint", "value": value}, on_conflict="key").execute()
+    else:
+        Path(".ai_category_hint").write_text(value)
+
+
 def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: str, model: str) -> tuple[pd.DataFrame, list[str]]:
     api_key = config("OPENAI_API_KEY")
     if not api_key:
@@ -789,17 +805,20 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
     st.subheader("AIで単語追加")
     api_key = config("OPENAI_API_KEY")
     model_default = config("OPENAI_MODEL", DEFAULT_AI_MODEL)
+    if "ai_category_hint" not in st.session_state:
+        st.session_state["ai_category_hint"] = saved_ai_category()
     st.info(f"最終AI追加日: {last_ai_date() or '-'} / 現在の単語数: {len(df)}")
     if not api_key:
         st.warning("OPENAI_API_KEY をSecretsに設定すると使えます。")
     with st.form("ai_form"):
         count = st.number_input("追加する単語数", 1, 20, 5)
-        category = st.text_input("カテゴリの希望", placeholder="Business, Academic など")
+        category = st.text_input("カテゴリの希望", placeholder="Business, Academic など", key="ai_category_hint")
         difficulty = st.selectbox("難易度", ["3から5を中心にする", "1から2の基礎", "3の中級", "4から5の上級"], index=3)
         model = st.text_input("モデル", value=model_default)
         force = st.checkbox("今日すでに追加済みでも実行する")
         submitted = st.form_submit_button("AI追加", disabled=not bool(api_key))
     if submitted:
+        set_saved_ai_category(category)
         if last_ai_date() == today() and not force:
             st.info("今日はすでに追加済みです。")
             return df

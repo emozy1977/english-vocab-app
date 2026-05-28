@@ -224,6 +224,16 @@ class AppSmokeTests(unittest.TestCase):
             with self.assertRaises(app.LowFrequencySaveError):
                 app.update_low_frequency(df, 1, True)
 
+    def test_saved_ai_category_uses_local_marker(self) -> None:
+        with TemporaryDirectory() as tmp:
+            with (
+                patch.object(app, "supabase_enabled", return_value=False),
+                patch("app.Path", side_effect=lambda value: Path(tmp) / value),
+            ):
+                app.set_saved_ai_category("Business")
+
+                self.assertEqual(app.saved_ai_category(), "Business")
+
     def test_auto_improve_skips_recent_history_tasks(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
