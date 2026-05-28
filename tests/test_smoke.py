@@ -96,6 +96,32 @@ class AppSmokeTests(unittest.TestCase):
 
         self.assertEqual(ids, [2, 3, 1])
 
+    def test_next_id_skips_recent_low_frequency_word_when_possible(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "new_low", "", "other", "新規低頻度", "", "", "Test", "3", True, 0, 0, ""],
+                    [2, "new_normal", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
+                    [3, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        self.assertEqual(app.next_id(df, current=3, recent_ids=[1, 2, 3]), 2)
+
+    def test_next_id_allows_low_frequency_when_no_other_choice(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "only_low", "", "other", "低頻度だけ", "", "", "Test", "3", True, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        self.assertEqual(app.next_id(df, current=1, recent_ids=[1]), 1)
+
     def test_mixed_ids_places_many_first_try_correct_words_later(self) -> None:
         df = pd.DataFrame(
             [

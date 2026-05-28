@@ -19,6 +19,7 @@ BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
+LOW_FREQUENCY_GAP = 5
 SESSION_WORDS_KEY = "words_df"
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
@@ -378,13 +379,37 @@ def mixed_ids(df: pd.DataFrame) -> list[int]:
     return ids
 
 
-def next_id(df: pd.DataFrame, current: int | None = None) -> int | None:
+def next_id(df: pd.DataFrame, current: int | None = None, recent_ids: list[int] | None = None) -> int | None:
     ids = mixed_ids(df)
     if not ids:
         return None
     if current not in ids or len(ids) == 1:
-        return ids[0]
-    return ids[(ids.index(current) + 1) % len(ids)]
+        candidates = ids
+    else:
+        start = ids.index(current) + 1
+        candidates = ids[start:] + ids[:start]
+    recent = set(int(value) for value in (recent_ids or [])[-LOW_FREQUENCY_GAP:])
+    low_frequency = df.set_index("id")["low_frequency"].apply(normalize_bool).to_dict()
+    for candidate in candidates:
+        if len(ids) > 1 and candidate == current:
+            continue
+        if low_frequency.get(candidate, False) and candidate in recent:
+            continue
+        return candidate
+    return candidates[0] if candidates else ids[0]
+
+
+def next_id_for_session(df: pd.DataFrame, current: int | None, recent_key: str) -> int | None:
+    recent = [
+        int(value)
+        for value in st.session_state.get(recent_key, [])
+        if row_by_id(df, int(value)) is not None
+    ]
+    if current is not None:
+        recent.append(int(current))
+    recent = recent[-LOW_FREQUENCY_GAP:]
+    st.session_state[recent_key] = recent
+    return next_id(df, current, recent)
 
 
 def is_first_quiz_attempt(result: object, word_id: int) -> bool:
@@ -507,8 +532,9 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     key = "study_current_id"
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
+    recent_key = "study_recent_ids"
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
-        st.session_state[key] = next_id(df)
+        st.session_state[key] = next_id_for_session(df, None, recent_key)
         st.session_state[reveal_key] = False
     row = row_by_id(df, st.session_state[key])
     if row is None:
@@ -543,16 +569,16 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1, c2 = st.columns(2)
     if c1.button("覚えた", type="primary", width="stretch"):
         df = update_stats(df, int(row["id"]), True)
-        st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     if c2.button("苦手", width="stretch"):
         df = update_stats(df, int(row["id"]), False)
-        st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     if st.button("次へ", width="stretch"):
-        st.session_state[key] = next_id(df, int(row["id"]))
+        st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     return df
@@ -566,8 +592,9 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     current_key = f"{mode}_current_id"
     result_key = f"{mode}_result"
     answer_key = f"{mode}_answer"
+    recent_key = f"{mode}_recent_ids"
     if current_key not in st.session_state or row_by_id(available, st.session_state[current_key]) is None:
-        st.session_state[current_key] = next_id(available)
+        st.session_state[current_key] = next_id_for_session(available, None, recent_key)
     row = row_by_id(available, st.session_state[current_key])
     prompt = row["meaning_ja"] if mode == "written" else blank_sentence(row["example_en"], row["word"])
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
@@ -609,7 +636,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             if st.button("次へ", type="primary", width="stretch"):
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
-                st.session_state[current_key] = next_id(available, int(row["id"]))
+                st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
                 st.rerun()
             return df
         st.caption("もう一度入力して、正解できたら次へ進めます。")
