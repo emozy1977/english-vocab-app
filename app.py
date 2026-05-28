@@ -569,6 +569,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     reveal_key = "study_answer_visible"
     viewed_key = "study_viewed_id"
     recent_key = "study_recent_ids"
+    history_key = "study_history_ids"
     if key not in st.session_state or row_by_id(df, st.session_state[key]) is None:
         st.session_state[key] = next_id_for_session(df, None, recent_key)
         st.session_state[reveal_key] = False
@@ -605,15 +606,27 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1, c2 = st.columns(2)
     if c1.button("覚えた", type="primary", width="stretch"):
         df = update_stats(df, int(row["id"]), True)
+        st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     if c2.button("苦手", width="stretch"):
         df = update_stats(df, int(row["id"]), False)
+        st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
-    if st.button("次へ", width="stretch"):
+    c3, c4 = st.columns(2)
+    history = st.session_state.get(history_key, [])
+    if c3.button("前へ", width="stretch", disabled=not bool(history)):
+        previous_id, remaining_history = pop_previous_id(history, df)
+        st.session_state[history_key] = remaining_history
+        if previous_id is not None:
+            st.session_state[key] = previous_id
+        st.session_state[reveal_key] = False
+        st.rerun()
+    if c4.button("次へ", width="stretch"):
+        st.session_state[history_key] = pushed_history(history, int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
