@@ -477,8 +477,25 @@ def upsert_word(df: pd.DataFrame, values: dict[str, object]) -> tuple[pd.DataFra
     return set_words(df), created
 
 
+def word_forms_for_blank(word: object) -> list[str]:
+    base = str(word).strip().lower()
+    if not base:
+        return []
+    forms = {base, f"{base}s", f"{base}ed", f"{base}ing"}
+    if base.endswith("e") and len(base) > 1:
+        stem = base[:-1]
+        forms.update({f"{base}d", f"{stem}ing"})
+    if base.endswith("y") and len(base) > 1:
+        stem = base[:-1]
+        forms.update({f"{stem}ies", f"{stem}ied"})
+    return sorted(forms, key=len, reverse=True)
+
+
 def blank_sentence(example: str, word: str) -> str:
-    pattern = re.compile(rf"\b{re.escape(word)}\b", re.IGNORECASE)
+    forms = word_forms_for_blank(word)
+    if not forms:
+        return example
+    pattern = re.compile(rf"\b(?:{'|'.join(re.escape(form) for form in forms)})\b", re.IGNORECASE)
     return pattern.sub("_____", example, count=1) if pattern.search(example) else f"_____ {example}"
 
 

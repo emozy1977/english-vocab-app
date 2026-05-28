@@ -41,6 +41,16 @@ class AppSmokeTests(unittest.TestCase):
             "We need to _____ the plan quickly.",
         )
 
+    def test_blank_sentence_replaces_basic_inflected_forms(self) -> None:
+        self.assertEqual(
+            app.blank_sentence("We refined the proposal after several meetings.", "refine"),
+            "We _____ the proposal after several meetings.",
+        )
+        self.assertEqual(
+            app.blank_sentence("The team is consolidating reports.", "consolidate"),
+            "The team is _____ reports.",
+        )
+
     def test_answer_diff_html_highlights_spelling_mistakes(self) -> None:
         html = app.answer_diff_html("implement", "implment")
 
