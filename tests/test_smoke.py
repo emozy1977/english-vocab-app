@@ -120,6 +120,35 @@ class AppSmokeTests(unittest.TestCase):
 
         self.assertEqual(app.next_id(df, current=3, recent_ids=[1, 2, 3]), 2)
 
+    def test_next_id_keeps_all_low_frequency_words_on_cooldown(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "low_recent", "", "other", "低頻度1", "", "", "Test", "3", True, 0, 0, ""],
+                    [2, "low_other", "", "other", "低頻度2", "", "", "Test", "3", True, 0, 0, ""],
+                    [3, "normal_a", "", "other", "通常1", "", "", "Test", "3", False, 0, 0, ""],
+                    [4, "normal_b", "", "other", "通常2", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        self.assertEqual(app.next_id(df, current=4, recent_ids=[1, 3, 4]), 3)
+
+    def test_next_id_allows_low_frequency_after_cooldown(self) -> None:
+        df = app.normalize_df(
+            pd.DataFrame(
+                [
+                    [1, "low", "", "other", "低頻度", "", "", "Test", "3", True, 0, 0, ""],
+                    [2, "normal_a", "", "other", "通常1", "", "", "Test", "3", False, 0, 0, ""],
+                    [3, "normal_b", "", "other", "通常2", "", "", "Test", "3", False, 0, 0, ""],
+                ],
+                columns=app.COLUMNS,
+            )
+        )
+
+        self.assertEqual(app.next_id(df, current=2, recent_ids=[2, 3]), 1)
+
     def test_next_id_allows_low_frequency_when_no_other_choice(self) -> None:
         df = app.normalize_df(
             pd.DataFrame(

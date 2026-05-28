@@ -19,7 +19,7 @@ BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
-LOW_FREQUENCY_GAP = 5
+LOW_FREQUENCY_GAP = 20
 SESSION_WORDS_KEY = "words_df"
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
@@ -362,21 +362,7 @@ def mixed_ids(df: pd.DataFrame) -> list[int]:
     new_normal, new_reduced = ids_by_frequency(scored, newest_first(scored[new_mask]))
     difficult_normal, difficult_reduced = ids_by_frequency(scored, priority(scored[~new_mask & difficult_mask]))
     regular_normal, regular_reduced = ids_by_frequency(scored, priority(scored[~new_mask & ~difficult_mask]))
-    buckets = {
-        "new": new_normal,
-        "difficult": difficult_normal,
-        "regular": regular_normal,
-        "new_reduced": new_reduced,
-        "difficult_reduced": difficult_reduced,
-        "regular_reduced": regular_reduced,
-    }
-    order = ["new", "difficult", "regular", "new_reduced", "difficult_reduced", "regular_reduced"]
-    ids: list[int] = []
-    while any(buckets.values()):
-        for name in order:
-            if buckets[name]:
-                ids.append(buckets[name].pop(0))
-    return ids
+    return new_normal + difficult_normal + regular_normal + new_reduced + difficult_reduced + regular_reduced
 
 
 def next_id(df: pd.DataFrame, current: int | None = None, recent_ids: list[int] | None = None) -> int | None:
@@ -390,10 +376,15 @@ def next_id(df: pd.DataFrame, current: int | None = None, recent_ids: list[int] 
         candidates = ids[start:] + ids[:start]
     recent = set(int(value) for value in (recent_ids or [])[-LOW_FREQUENCY_GAP:])
     low_frequency = df.set_index("id")["low_frequency"].apply(normalize_bool).to_dict()
+    recent_has_low_frequency = any(low_frequency.get(word_id, False) for word_id in recent)
+    has_normal_alternative = any(
+        candidate != current and not low_frequency.get(candidate, False)
+        for candidate in candidates
+    )
     for candidate in candidates:
         if len(ids) > 1 and candidate == current:
             continue
-        if low_frequency.get(candidate, False) and candidate in recent:
+        if low_frequency.get(candidate, False) and has_normal_alternative and recent_has_low_frequency:
             continue
         return candidate
     return candidates[0] if candidates else ids[0]
@@ -582,7 +573,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[reveal_key] = False
     show_answer = bool(st.session_state.get(reveal_key, False))
     st.subheader("学習カード")
-    st.caption("新しい単語を先に出し、その後に苦手数（不正解 - 正解）が高い単語を出します。頻度低の単語も後半に回して必ず混ぜます。")
+    st.caption("新しい単語を先に出し、その後に苦手数（不正解 - 正解）が高い単語を出します。頻度低の単語は直近20回に出ている間、通常単語を優先します。")
     render_card(row, show_answer=show_answer)
     current_low_frequency = normalize_bool(row.get("low_frequency", False))
     low_frequency = st.checkbox(
@@ -649,7 +640,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     prompt = row["meaning_ja"] if mode == "written" else blank_sentence(row["example_en"], row["word"])
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
     st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
-    st.caption("新しい単語を先に出し、1回目で正解が多い単語や頻度低の単語は後半に回します。")
+    st.caption("新しい単語を先に出し、1回目で正解が多い単語は後半へ、頻度低の単語は直近20回に出ている間は通常単語を優先します。")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
     current_low_frequency = normalize_bool(row.get("low_frequency", False))
     low_frequency = st.checkbox(
