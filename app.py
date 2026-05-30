@@ -46,6 +46,14 @@ def config(key: str, default: str = "") -> str:
     value = os.getenv(key, "").strip()
     if value:
         return value
+    local_secret_paths = [
+        Path.home() / ".streamlit" / "secrets.toml",
+        Path.cwd() / ".streamlit" / "secrets.toml",
+        Path(__file__).resolve().parent / ".streamlit" / "secrets.toml",
+    ]
+    is_streamlit_cloud = bool(os.getenv("STREAMLIT_CLOUD")) or Path.home().name == "adminuser" or Path("/mount/src").exists()
+    if not any(path.exists() for path in local_secret_paths) and not is_streamlit_cloud:
+        return default
     try:
         return str(st.secrets.get(key, default)).strip()
     except Exception:
@@ -200,7 +208,7 @@ def render_pronunciation_button(word: object) -> None:
     if not speak_text:
         return
 
-    st.iframe(
+    components.html(
         f"""
         <button id="speak-word" type="button" aria-label="発音を再生">
           <span class="speaker-icon">▶</span>
