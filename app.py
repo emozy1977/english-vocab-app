@@ -897,7 +897,9 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             prompt, expected_answer = blank_sentence_and_answer(variant["en"], row["word"])
         variant_hint = variant.get("ja", "")
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
-    if mode != "written" and variant_hint:
+    if mode == "listening":
+        hint = "日本語訳は正解後に表示されます。"
+    elif mode != "written" and variant_hint:
         hint = variant_hint
     titles = {"written": "筆記問題", "fill": "穴埋め問題", "listening": "聞き取り問題"}
     st.subheader(titles.get(mode, "問題"))
@@ -938,6 +940,16 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         else:
             render_pronunciation_button(result["expected"])
         if result["correct"]:
+            if mode == "listening" and variant_hint:
+                st.markdown(
+                    f"""
+                    <div class="answer-review">
+                      <div class="answer-review-label">日本語訳</div>
+                      <div class="answer-review-text">{esc(variant_hint)}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
             enable_return_to_next()
             st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
             history = st.session_state.get(history_key, [])
