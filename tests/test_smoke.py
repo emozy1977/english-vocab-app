@@ -63,6 +63,39 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(prompt, "_____ She leads the project well.")
         self.assertEqual(answer, "manage")
 
+    def test_cloze_examples_for_values_builds_five_verb_variants(self) -> None:
+        examples = app.cloze_examples_for_values(
+            {
+                "word": "manage",
+                "part_of_speech": "verb",
+                "meaning_ja": "管理する",
+                "example_en": "We manage the project carefully.",
+                "example_ja": "私たちはそのプロジェクトを慎重に管理します。",
+            }
+        )
+
+        self.assertEqual(len(examples), 5)
+        self.assertIn("manages", " ".join(example["en"] for example in examples))
+        self.assertIn("was managed", " ".join(example["en"] for example in examples))
+
+    def test_encode_cloze_examples_deduplicates_and_limits_to_five(self) -> None:
+        encoded = app.encode_cloze_examples(
+            [
+                {"en": "She manages the project.", "ja": "彼女はプロジェクトを管理します。"},
+                {"en": "She manages the project.", "ja": "重複"},
+                {"en": "We manage the project.", "ja": ""},
+                {"en": "They managed the project.", "ja": ""},
+                {"en": "The project was managed well.", "ja": ""},
+                {"en": "Managing the project takes time.", "ja": ""},
+                {"en": "Extra example.", "ja": ""},
+            ]
+        )
+
+        parsed = app.parse_cloze_examples(encoded)
+
+        self.assertEqual(len(parsed), 5)
+        self.assertEqual(parsed[0]["ja"], "彼女はプロジェクトを管理します。")
+
     def test_answer_diff_html_highlights_spelling_mistakes(self) -> None:
         html = app.answer_diff_html("implement", "implment")
 
@@ -78,8 +111,8 @@ class AppSmokeTests(unittest.TestCase):
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "known", "", "other", "既知", "", "", "Test", "3", False, 5, 1, "2026-05-20"],
-                [2, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 5, "2026-05-20"],
+                [1, "known", "", "other", "既知", "", "", "[]", "Test", "3", False, 5, 1, "2026-05-20"],
+                [2, "weak", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 5, "2026-05-20"],
             ],
             columns=app.COLUMNS,
         )
@@ -92,9 +125,9 @@ class AppSmokeTests(unittest.TestCase):
     def test_mixed_ids_includes_difficult_new_and_regular_words(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "regular", "", "other", "普通", "", "", "Test", "3", False, 2, 1, "2026-05-20"],
-                [2, "difficult", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
-                [3, "new", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
+                [1, "regular", "", "other", "普通", "", "", "[]", "Test", "3", False, 2, 1, "2026-05-20"],
+                [2, "difficult", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 4, "2026-05-20"],
+                [3, "new", "", "other", "新規", "", "", "[]", "Test", "3", False, 0, 0, ""],
             ],
             columns=app.COLUMNS,
         )
@@ -107,9 +140,9 @@ class AppSmokeTests(unittest.TestCase):
     def test_mixed_ids_places_low_frequency_words_later(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "new_low", "", "other", "新規低頻度", "", "", "Test", "3", True, 0, 0, ""],
-                [2, "new_normal", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
-                [3, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
+                [1, "new_low", "", "other", "新規低頻度", "", "", "[]", "Test", "3", True, 0, 0, ""],
+                [2, "new_normal", "", "other", "新規", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                [3, "weak", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 4, "2026-05-20"],
             ],
             columns=app.COLUMNS,
         )
@@ -122,9 +155,9 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "new_low", "", "other", "新規低頻度", "", "", "Test", "3", True, 0, 0, ""],
-                    [2, "new_normal", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
-                    [3, "weak", "", "other", "苦手", "", "", "Test", "3", False, 1, 4, "2026-05-20"],
+                    [1, "new_low", "", "other", "新規低頻度", "", "", "[]", "Test", "3", True, 0, 0, ""],
+                    [2, "new_normal", "", "other", "新規", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                    [3, "weak", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 4, "2026-05-20"],
                 ],
                 columns=app.COLUMNS,
             )
@@ -136,10 +169,10 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "low_recent", "", "other", "低頻度1", "", "", "Test", "3", True, 0, 0, ""],
-                    [2, "low_other", "", "other", "低頻度2", "", "", "Test", "3", True, 0, 0, ""],
-                    [3, "normal_a", "", "other", "通常1", "", "", "Test", "3", False, 0, 0, ""],
-                    [4, "normal_b", "", "other", "通常2", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "low_recent", "", "other", "低頻度1", "", "", "[]", "Test", "3", True, 0, 0, ""],
+                    [2, "low_other", "", "other", "低頻度2", "", "", "[]", "Test", "3", True, 0, 0, ""],
+                    [3, "normal_a", "", "other", "通常1", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                    [4, "normal_b", "", "other", "通常2", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -151,9 +184,9 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "low", "", "other", "低頻度", "", "", "Test", "3", True, 0, 0, ""],
-                    [2, "normal_a", "", "other", "通常1", "", "", "Test", "3", False, 0, 0, ""],
-                    [3, "normal_b", "", "other", "通常2", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "low", "", "other", "低頻度", "", "", "[]", "Test", "3", True, 0, 0, ""],
+                    [2, "normal_a", "", "other", "通常1", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                    [3, "normal_b", "", "other", "通常2", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -165,7 +198,7 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "only_low", "", "other", "低頻度だけ", "", "", "Test", "3", True, 0, 0, ""],
+                    [1, "only_low", "", "other", "低頻度だけ", "", "", "[]", "Test", "3", True, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -176,9 +209,9 @@ class AppSmokeTests(unittest.TestCase):
     def test_mixed_ids_places_many_first_try_correct_words_later(self) -> None:
         df = pd.DataFrame(
             [
-                [1, "easy", "", "other", "簡単", "", "", "Test", "3", False, 8, 0, "2026-05-20"],
-                [2, "less_known", "", "other", "まだ浅い", "", "", "Test", "3", False, 1, 0, "2026-05-20"],
-                [3, "new", "", "other", "新規", "", "", "Test", "3", False, 0, 0, ""],
+                [1, "easy", "", "other", "簡単", "", "", "[]", "Test", "3", False, 8, 0, "2026-05-20"],
+                [2, "less_known", "", "other", "まだ浅い", "", "", "[]", "Test", "3", False, 1, 0, "2026-05-20"],
+                [3, "new", "", "other", "新規", "", "", "[]", "Test", "3", False, 0, 0, ""],
             ],
             columns=app.COLUMNS,
         )
@@ -199,8 +232,8 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "one", "", "other", "1", "", "", "Test", "3", False, 0, 0, ""],
-                    [3, "three", "", "other", "3", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "one", "", "other", "1", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                    [3, "three", "", "other", "3", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -215,7 +248,7 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "target", "", "other", "対象", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -236,7 +269,7 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "target", "", "other", "対象", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )
@@ -257,7 +290,7 @@ class AppSmokeTests(unittest.TestCase):
         df = app.normalize_df(
             pd.DataFrame(
                 [
-                    [1, "target", "", "other", "対象", "", "", "Test", "3", False, 0, 0, ""],
+                    [1, "target", "", "other", "対象", "", "", "[]", "Test", "3", False, 0, 0, ""],
                 ],
                 columns=app.COLUMNS,
             )

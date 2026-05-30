@@ -298,6 +298,7 @@ https://your-app-name.streamlit.app
 - `meaning_ja`: 日本語の意味
 - `example_en`: 英語の例文
 - `example_ja`: 例文の日本語訳
+- `cloze_examples`: 穴埋め問題用の例文セット（JSON文字列、最大5件）
 - `category`: カテゴリ
 - `difficulty`: 難易度
 - `low_frequency`: 出題頻度を下げるフラグ

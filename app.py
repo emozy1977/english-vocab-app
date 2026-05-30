@@ -13,33 +13,44 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 DATA_FILE = Path(__file__).with_name("words.csv")
-COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]
+COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "cloze_examples", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]
 COUNT_COLUMNS = ["correct_count", "wrong_count"]
 BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
 LOW_FREQUENCY_GAP = 20
+CLOZE_EXAMPLE_COUNT = 5
 SESSION_WORDS_KEY = "words_df"
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
 
 SAMPLE_WORDS = [
-    [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "Business", "4", False, 0, 0, ""],
-    [2, "consolidate", "kun-SOL-ih-dayt", "verb", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "Business", "4", False, 0, 0, ""],
-    [3, "appropriate", "uh-PROH-pree-uht", "adjective", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "Academic", "3", False, 0, 0, ""],
-    [4, "implement", "IM-pluh-ment", "verb", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "Business", "3", False, 0, 0, ""],
-    [5, "overlook", "oh-ver-LOOK", "verb", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "Daily", "3", False, 0, 0, ""],
-    [6, "fatigue", "fuh-TEEG", "noun", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "Health", "2", False, 0, 0, ""],
-    [7, "retention", "ree-TEN-shun", "noun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "Learning", "4", False, 0, 0, ""],
-    [8, "elaborate", "ih-LAB-uh-rayt", "verb", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "Academic", "3", False, 0, 0, ""],
-    [9, "conversely", "KON-ver-slee", "adverb", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "Academic", "4", False, 0, 0, ""],
-    [10, "recurrent", "ree-KUR-unt", "adjective", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "Academic", "4", False, 0, 0, ""],
+    [1, "incorporate", "in-KOR-puh-rayt", "verb", "取り入れる、組み込む", "We need to incorporate user feedback into the next version.", "次のバージョンにユーザーの意見を取り入れる必要があります。", "[]", "Business", "4", False, 0, 0, ""],
+    [2, "consolidate", "kun-SOL-ih-dayt", "verb", "統合する、強化する", "The team will consolidate multiple reports into one dashboard.", "チームは複数のレポートを1つのダッシュボードに統合します。", "[]", "Business", "4", False, 0, 0, ""],
+    [3, "appropriate", "uh-PROH-pree-uht", "adjective", "適切な", "Please choose the most appropriate response for the situation.", "その状況に最も適切な返答を選んでください。", "[]", "Academic", "3", False, 0, 0, ""],
+    [4, "implement", "IM-pluh-ment", "verb", "実行する、実装する", "The company plans to implement a new training program.", "会社は新しい研修プログラムを実施する予定です。", "[]", "Business", "3", False, 0, 0, ""],
+    [5, "overlook", "oh-ver-LOOK", "verb", "見落とす、大目に見る", "It is easy to overlook small errors when you are tired.", "疲れていると小さな誤りを見落としやすいです。", "[]", "Daily", "3", False, 0, 0, ""],
+    [6, "fatigue", "fuh-TEEG", "noun", "疲労", "Long meetings can cause mental fatigue.", "長い会議は精神的な疲労を引き起こすことがあります。", "[]", "Health", "2", False, 0, 0, ""],
+    [7, "retention", "ree-TEN-shun", "noun", "保持、定着", "Regular review improves vocabulary retention.", "定期的な復習は語彙の定着を高めます。", "[]", "Learning", "4", False, 0, 0, ""],
+    [8, "elaborate", "ih-LAB-uh-rayt", "verb", "詳しく説明する", "Could you elaborate on your main idea?", "主な考えについて詳しく説明してもらえますか。", "[]", "Academic", "3", False, 0, 0, ""],
+    [9, "conversely", "KON-ver-slee", "adverb", "反対に、逆に", "Some tasks require speed; conversely, others require careful planning.", "速さが必要な作業もありますが、逆に慎重な計画が必要な作業もあります。", "[]", "Academic", "4", False, 0, 0, ""],
+    [10, "recurrent", "ree-KUR-unt", "adjective", "繰り返し起こる", "The app helps users review recurrent mistakes.", "そのアプリはユーザーが繰り返し起こる間違いを復習するのに役立ちます。", "[]", "Academic", "4", False, 0, 0, ""],
 ]
 
 
 class LowFrequencySaveError(RuntimeError):
     pass
+
+
+class SupabaseSchemaError(RuntimeError):
+    pass
+
+
+def raise_schema_error_if_needed(exc: Exception) -> None:
+    text = str(exc)
+    if "cloze_examples" in text:
+        raise SupabaseSchemaError("Supabaseに cloze_examples 列がまだありません。Supabase SQL Editorで supabase_schema.sql を実行してから、アプリを再読み込みしてください。") from exc
 
 
 def config(key: str, default: str = "") -> str:
@@ -82,6 +93,43 @@ def normalize_bool(value: object) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on", "checked"}
 
 
+def parse_cloze_examples(value: object) -> list[dict[str, str]]:
+    if isinstance(value, list):
+        raw_items = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return []
+        try:
+            raw_items = json.loads(text)
+        except json.JSONDecodeError:
+            return []
+    examples: list[dict[str, str]] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        en = str(item.get("en") or item.get("example_en") or "").strip()
+        ja = str(item.get("ja") or item.get("example_ja") or "").strip()
+        if en:
+            examples.append({"en": en, "ja": ja})
+    return examples[:CLOZE_EXAMPLE_COUNT]
+
+
+def encode_cloze_examples(examples: list[dict[str, str]]) -> str:
+    cleaned: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for example in examples:
+        en = str(example.get("en", "")).strip()
+        ja = str(example.get("ja", "")).strip()
+        key = en.lower()
+        if en and key not in seen:
+            cleaned.append({"en": en, "ja": ja})
+            seen.add(key)
+        if len(cleaned) >= CLOZE_EXAMPLE_COUNT:
+            break
+    return json.dumps(cleaned, ensure_ascii=False)
+
+
 def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     for col in COLUMNS:
@@ -100,6 +148,7 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).astype(int)
     df["difficulty"] = df["difficulty"].astype(str).replace({"": "3"})
     df["part_of_speech"] = df["part_of_speech"].apply(normalize_pos)
+    df["cloze_examples"] = df["cloze_examples"].apply(lambda value: encode_cloze_examples(parse_cloze_examples(value)))
     for col in BOOL_COLUMNS:
         df[col] = df[col].apply(normalize_bool)
     return df
@@ -110,7 +159,11 @@ def save_rows(rows: list[dict[str, object]]) -> None:
         return
     normalized = normalize_df(pd.DataFrame(rows))
     if supabase_enabled():
-        supabase_client().table(SUPABASE_TABLE).upsert(normalized[COLUMNS].to_dict("records"), on_conflict="word").execute()
+        try:
+            supabase_client().table(SUPABASE_TABLE).upsert(normalized[COLUMNS].to_dict("records"), on_conflict="word").execute()
+        except Exception as exc:
+            raise_schema_error_if_needed(exc)
+            raise
         return
     current = load_words()
     merged = pd.concat([current, normalized], ignore_index=True).drop_duplicates(subset=["word"], keep="last")
@@ -120,7 +173,11 @@ def save_rows(rows: list[dict[str, object]]) -> None:
 def save_words(df: pd.DataFrame) -> None:
     df = normalize_df(df)
     if supabase_enabled():
-        supabase_client().table(SUPABASE_TABLE).upsert(df[COLUMNS].to_dict("records"), on_conflict="word").execute()
+        try:
+            supabase_client().table(SUPABASE_TABLE).upsert(df[COLUMNS].to_dict("records"), on_conflict="word").execute()
+        except Exception as exc:
+            raise_schema_error_if_needed(exc)
+            raise
         return
     df.to_csv(DATA_FILE, index=False)
 
@@ -475,6 +532,8 @@ def update_low_frequency(df: pd.DataFrame, word_id: int, low_frequency: bool) ->
 
 def upsert_word(df: pd.DataFrame, values: dict[str, object]) -> tuple[pd.DataFrame, bool]:
     df = df.copy()
+    if "cloze_examples" not in values or not parse_cloze_examples(values.get("cloze_examples")):
+        values = {**values, "cloze_examples": encode_cloze_examples(cloze_examples_for_values(values))}
     normalized_word = norm(values["word"])
     mask = df["word"].astype(str).str.strip().str.lower() == normalized_word
     if mask.any():
@@ -495,14 +554,107 @@ def upsert_word(df: pd.DataFrame, values: dict[str, object]) -> tuple[pd.DataFra
     return set_words(df), created
 
 
+def has_short_vowel_consonant_ending(base: str) -> bool:
+    return (
+        len(base) >= 3
+        and base[-1] not in "aeiouwxy"
+        and base[-2] in "aeiou"
+        and base[-3] not in "aeiou"
+    )
+
+
+def verb_forms(base_word: object) -> dict[str, str]:
+    base = str(base_word).strip().lower()
+    if not base:
+        return {"base": "", "third": "", "past": "", "ing": ""}
+    if base.endswith("y") and len(base) > 1 and base[-2] not in "aeiou":
+        third = f"{base[:-1]}ies"
+        past = f"{base[:-1]}ied"
+    elif base.endswith(("s", "sh", "ch", "x", "z", "o")):
+        third = f"{base}es"
+        past = f"{base}ed"
+    elif base.endswith("e"):
+        third = f"{base}s"
+        past = f"{base}d"
+    else:
+        third = f"{base}s"
+        past = f"{base}ed"
+    if base.endswith("ie"):
+        ing = f"{base[:-2]}ying"
+    elif base.endswith("e") and not base.endswith("ee"):
+        ing = f"{base[:-1]}ing"
+    elif has_short_vowel_consonant_ending(base):
+        ing = f"{base}{base[-1]}ing"
+        past = f"{base}{base[-1]}ed"
+    else:
+        ing = f"{base}ing"
+    return {"base": base, "third": third, "past": past, "ing": ing}
+
+
+def generated_cloze_examples(values: object) -> list[dict[str, str]]:
+    getter = values.get if hasattr(values, "get") else lambda key, default="": getattr(values, key, default)
+    word = str(getter("word", "")).strip()
+    part = normalize_pos(getter("part_of_speech", "other"))
+    meaning = str(getter("meaning_ja", "")).strip() or "その語"
+    if not word:
+        return []
+    if part == "verb":
+        forms = verb_forms(word)
+        return [
+            {"en": f"They {forms['base']} the plan when priorities change.", "ja": f"優先順位が変わると、彼らは計画を{meaning}。"},
+            {"en": f"She {forms['third']} the project every week.", "ja": f"彼女は毎週そのプロジェクトを{meaning}。"},
+            {"en": f"The team {forms['past']} the process yesterday.", "ja": f"チームは昨日その手順を{meaning}。"},
+            {"en": f"The process was {forms['past']} by the team.", "ja": f"その手順はチームによって{meaning}。"},
+            {"en": f"We are {forms['ing']} the details now.", "ja": f"私たちは今、詳細を{meaning}。"},
+        ]
+    if part == "adjective":
+        return [
+            {"en": f"This is a {word} response.", "ja": f"これは{meaning}返答です。"},
+            {"en": f"The timing seems {word}.", "ja": f"そのタイミングは{meaning}ようです。"},
+            {"en": f"We need a more {word} approach.", "ja": f"私たちはより{meaning}方法が必要です。"},
+            {"en": f"Her comment was {word} for the meeting.", "ja": f"彼女の発言は会議にとって{meaning}ものでした。"},
+            {"en": f"The team chose the most {word} option.", "ja": f"チームは最も{meaning}選択肢を選びました。"},
+        ]
+    if part == "adverb":
+        return [
+            {"en": f"The team responded {word}.", "ja": f"チームは{meaning}対応しました。"},
+            {"en": f"Some people agreed; {word}, others objected.", "ja": f"賛成する人もいましたが、{meaning}反対する人もいました。"},
+            {"en": f"The result changed {word}.", "ja": f"結果は{meaning}変わりました。"},
+            {"en": f"She explained the point {word}.", "ja": f"彼女はその点を{meaning}説明しました。"},
+            {"en": f"The second option works {word}.", "ja": f"2つ目の選択肢は{meaning}機能します。"},
+        ]
+    return [
+        {"en": f"The report mentioned {word}.", "ja": f"報告書は{meaning}に触れていました。"},
+        {"en": f"We discussed {word} during the meeting.", "ja": f"私たちは会議で{meaning}について話しました。"},
+        {"en": f"The article explains {word} clearly.", "ja": f"その記事は{meaning}を明確に説明しています。"},
+        {"en": f"Understanding {word} takes practice.", "ja": f"{meaning}を理解するには練習が必要です。"},
+        {"en": f"The lesson focused on {word}.", "ja": f"その授業は{meaning}に焦点を当てました。"},
+    ]
+
+
+def cloze_examples_for_values(values: object) -> list[dict[str, str]]:
+    getter = values.get if hasattr(values, "get") else lambda key, default="": getattr(values, key, default)
+    examples: list[dict[str, str]] = []
+    primary_en = str(getter("example_en", "")).strip()
+    primary_ja = str(getter("example_ja", "")).strip()
+    if primary_en:
+        examples.append({"en": primary_en, "ja": primary_ja})
+    examples.extend(parse_cloze_examples(getter("cloze_examples", "")))
+    examples.extend(generated_cloze_examples(values))
+    return parse_cloze_examples(encode_cloze_examples(examples))
+
+
+def cloze_examples_for_row(row) -> list[dict[str, str]]:
+    return cloze_examples_for_values(row)
+
+
 def word_forms_for_blank(word: object) -> list[str]:
     base = str(word).strip().lower()
     if not base:
         return []
-    forms = {base, f"{base}s", f"{base}ed", f"{base}ing"}
-    if base.endswith("e") and len(base) > 1:
-        stem = base[:-1]
-        forms.update({f"{base}d", f"{stem}ing"})
+    forms = {base}
+    if " " not in base:
+        forms.update(verb_forms(base).values())
     if base.endswith("y") and len(base) > 1:
         stem = base[:-1]
         forms.update({f"{stem}ies", f"{stem}ied"})
@@ -564,8 +716,12 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
         if not word.strip() or not meaning.strip():
             st.error("英単語と日本語の意味は必須です。")
         else:
-            df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty, "low_frequency": low_frequency})
-            st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
+            try:
+                df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty, "low_frequency": low_frequency})
+            except SupabaseSchemaError as exc:
+                st.error(str(exc))
+            else:
+                st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
     with st.expander("登録済み単語"):
         st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日"}), use_container_width=True, hide_index=True)
     return df
@@ -640,7 +796,7 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
-    available = df if mode == "written" else df[df["example_en"].astype(str).str.strip() != ""]
+    available = df if mode == "written" else df[df["word"].astype(str).str.strip() != ""]
     if available.empty:
         st.info("問題に使える単語がありません。")
         return df
@@ -649,15 +805,33 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     answer_key = f"{mode}_answer"
     recent_key = f"{mode}_recent_ids"
     history_key = f"{mode}_history_ids"
+    variant_key = f"{mode}_variant"
+    variant_counts_key = f"{mode}_variant_counts"
     if current_key not in st.session_state or row_by_id(available, st.session_state[current_key]) is None:
         st.session_state[current_key] = next_id_for_session(available, None, recent_key)
     row = row_by_id(available, st.session_state[current_key])
     if mode == "written":
         prompt = row["meaning_ja"]
         expected_answer = str(row["word"])
+        variant_hint = ""
     else:
-        prompt, expected_answer = blank_sentence_and_answer(row["example_en"], row["word"])
+        variants = cloze_examples_for_row(row)
+        if st.session_state.get(variant_key, {}).get("id") != int(row["id"]):
+            variant_counts = {
+                int(key): int(value)
+                for key, value in st.session_state.get(variant_counts_key, {}).items()
+            }
+            variant_index = variant_counts.get(int(row["id"]), 0) % max(len(variants), 1)
+            variant_counts[int(row["id"])] = variant_index + 1
+            st.session_state[variant_counts_key] = variant_counts
+            st.session_state[variant_key] = {"id": int(row["id"]), "index": variant_index}
+        variant_index = int(st.session_state.get(variant_key, {}).get("index", 0)) % max(len(variants), 1)
+        variant = variants[variant_index]
+        prompt, expected_answer = blank_sentence_and_answer(variant["en"], row["word"])
+        variant_hint = variant.get("ja", "")
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
+    if mode != "written" and variant_hint:
+        hint = variant_hint
     st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
     st.caption("新しい単語を先に出し、1回目で正解が多い単語は後半へ、頻度低の単語は直近20回に出ている間は通常単語を優先します。")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
@@ -696,6 +870,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             history = st.session_state.get(history_key, [])
             if st.button("次へ", type="primary", use_container_width=True):
                 st.session_state.pop(result_key, None)
+                st.session_state.pop(variant_key, None)
                 st.session_state[answer_key] = ""
                 st.session_state[history_key] = pushed_history(history, int(row["id"]))
                 st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
@@ -703,6 +878,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             if st.button("前へ", use_container_width=True, disabled=not bool(history)):
                 previous_id, remaining_history = pop_previous_id(history, available)
                 st.session_state.pop(result_key, None)
+                st.session_state.pop(variant_key, None)
                 st.session_state[answer_key] = ""
                 st.session_state[history_key] = remaining_history
                 if previous_id is not None:
@@ -773,6 +949,10 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
     from openai import OpenAI
     from pydantic import BaseModel, Field
 
+    class ClozeExample(BaseModel):
+        en: str = Field(description="English sentence containing the target word or an inflected form")
+        ja: str = Field(description="Japanese translation of the sentence")
+
     class AiWord(BaseModel):
         word: str
         pronunciation: str
@@ -780,6 +960,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         meaning_ja: str
         example_en: str
         example_ja: str
+        cloze_examples: list[ClozeExample] = Field(description="Exactly 5 cloze-practice sentences")
         category: str
         difficulty: str = Field(pattern="^[1-5]$")
 
@@ -787,7 +968,7 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         words: list[AiWord]
 
     existing = ", ".join(df["word"].astype(str).tolist()[:500])
-    prompt = f"Generate {count} useful English vocabulary entries for a Japanese learner. Do not include these words: {existing}. Include part_of_speech as noun, verb, adjective, adverb, phrase, or other. Category hint: {category or 'any practical category'}. Difficulty hint: {difficulty}. Return Japanese meanings and translations."
+    prompt = f"Generate {count} useful English vocabulary entries for a Japanese learner. Do not include these words: {existing}. Include part_of_speech as noun, verb, adjective, adverb, phrase, or other. Category hint: {category or 'any practical category'}. Difficulty hint: {difficulty}. Return Japanese meanings and translations. For each word, include exactly 5 cloze_examples. Each cloze example must contain the target word or a natural inflected form. For verbs, vary tense, active voice, passive voice, third-person singular, and progressive/perfect forms when natural."
     parsed = OpenAI(api_key=api_key).responses.parse(model=model or DEFAULT_AI_MODEL, instructions="You are an English vocabulary coach for Japanese learners.", input=prompt, text_format=Batch).output_parsed
     existing_set = set(df["word"].astype(str).str.lower().str.strip())
     rows = []
@@ -799,6 +980,13 @@ def generate_ai_words(df: pd.DataFrame, count: int, category: str, difficulty: s
         if not word or word.lower() in existing_set:
             continue
         values["part_of_speech"] = normalize_pos(values.get("part_of_speech"))
+        values["cloze_examples"] = encode_cloze_examples([
+            {"en": example.get("en", ""), "ja": example.get("ja", "")}
+            for example in values.get("cloze_examples", [])
+            if isinstance(example, dict)
+        ])
+        if len(parse_cloze_examples(values["cloze_examples"])) < CLOZE_EXAMPLE_COUNT:
+            values["cloze_examples"] = encode_cloze_examples(cloze_examples_for_values(values))
         rows.append({"id": next_word_id, **values, "correct_count": 0, "wrong_count": 0, "last_studied": ""})
         added.append(word)
         existing_set.add(word.lower())
