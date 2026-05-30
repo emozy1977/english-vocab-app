@@ -510,11 +510,19 @@ def word_forms_for_blank(word: object) -> list[str]:
 
 
 def blank_sentence(example: str, word: str) -> str:
+    prompt, _answer = blank_sentence_and_answer(example, word)
+    return prompt
+
+
+def blank_sentence_and_answer(example: str, word: str) -> tuple[str, str]:
     forms = word_forms_for_blank(word)
     if not forms:
-        return example
+        return example, str(word).strip()
     pattern = re.compile(rf"\b(?:{'|'.join(re.escape(form) for form in forms)})\b", re.IGNORECASE)
-    return pattern.sub("_____", example, count=1) if pattern.search(example) else f"_____ {example}"
+    match = pattern.search(example)
+    if not match:
+        return f"_____ {example}", str(word).strip()
+    return pattern.sub("_____", example, count=1), match.group(0)
 
 
 def render_card(row, show_answer: bool = True) -> None:
@@ -644,7 +652,11 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     if current_key not in st.session_state or row_by_id(available, st.session_state[current_key]) is None:
         st.session_state[current_key] = next_id_for_session(available, None, recent_key)
     row = row_by_id(available, st.session_state[current_key])
-    prompt = row["meaning_ja"] if mode == "written" else blank_sentence(row["example_en"], row["word"])
+    if mode == "written":
+        prompt = row["meaning_ja"]
+        expected_answer = str(row["word"])
+    else:
+        prompt, expected_answer = blank_sentence_and_answer(row["example_en"], row["word"])
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
     st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
     st.caption("新しい単語を先に出し、1回目で正解が多い単語は後半へ、頻度低の単語は直近20回に出ている間は通常単語を優先します。")
@@ -703,10 +715,10 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         submitted = st.form_submit_button("判定")
     focus_answer_input()
     if submitted:
-        correct = norm(answer) == norm(row["word"])
+        correct = norm(answer) == norm(expected_answer)
         if is_first_quiz_attempt(st.session_state.get(result_key), int(row["id"])):
             df = update_stats(df, int(row["id"]), correct)
-        st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": row["word"], "answer": answer}
+        st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": expected_answer, "answer": answer}
         st.rerun()
     return df
 

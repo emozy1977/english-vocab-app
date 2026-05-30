@@ -51,6 +51,18 @@ class AppSmokeTests(unittest.TestCase):
             "The team is _____ reports.",
         )
 
+    def test_blank_sentence_and_answer_returns_inflected_answer(self) -> None:
+        prompt, answer = app.blank_sentence_and_answer("She manages the project well.", "manage")
+
+        self.assertEqual(prompt, "She _____ the project well.")
+        self.assertEqual(answer, "manages")
+
+    def test_blank_sentence_and_answer_falls_back_to_base_word(self) -> None:
+        prompt, answer = app.blank_sentence_and_answer("She leads the project well.", "manage")
+
+        self.assertEqual(prompt, "_____ She leads the project well.")
+        self.assertEqual(answer, "manage")
+
     def test_answer_diff_html_highlights_spelling_mistakes(self) -> None:
         html = app.answer_diff_html("implement", "implment")
 
