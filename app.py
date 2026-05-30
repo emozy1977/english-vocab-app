@@ -1011,7 +1011,6 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
     if mode == "listening":
         render_cached_tts_controls(expected_answer, f"{mode}_{int(row['id'])}_{variant_index}")
-        render_speech_button(expected_answer, label="英文を聞く", rate=0.82)
     current_low_frequency = normalize_bool(row.get("low_frequency", False))
     low_frequency = st.checkbox(
         "この単語の出題頻度を下げる",
