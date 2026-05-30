@@ -63,7 +63,7 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(prompt, "_____ She leads the project well.")
         self.assertEqual(answer, "manage")
 
-    def test_cloze_examples_for_values_builds_five_verb_variants(self) -> None:
+    def test_cloze_examples_for_values_uses_natural_primary_example_only(self) -> None:
         examples = app.cloze_examples_for_values(
             {
                 "word": "manage",
@@ -74,11 +74,15 @@ class AppSmokeTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(len(examples), 5)
-        self.assertIn("manages", " ".join(example["en"] for example in examples))
-        self.assertIn("was managed", " ".join(example["en"] for example in examples))
-        self.assertIn("cloud migration", " ".join(example["en"] for example in examples))
-        self.assertNotIn("the plan", " ".join(example["en"] for example in examples))
+        self.assertEqual(
+            examples,
+            [
+                {
+                    "en": "We manage the project carefully.",
+                    "ja": "私たちはそのプロジェクトを慎重に管理します。",
+                }
+            ],
+        )
 
     def test_cloze_examples_filter_old_pedagogical_templates(self) -> None:
         examples = app.cloze_examples_for_values(
@@ -98,8 +102,34 @@ class AppSmokeTests(unittest.TestCase):
         text = " ".join(example["en"] for example in examples)
 
         self.assertNotIn("The form", text)
-        self.assertIn("security risk", text)
-        self.assertIn("was mitigated", text)
+        self.assertEqual(examples, [])
+
+    def test_cloze_examples_keep_valid_stored_business_examples(self) -> None:
+        examples = app.cloze_examples_for_values(
+            {
+                "word": "mitigate",
+                "part_of_speech": "verb",
+                "meaning_ja": "軽減する、和らげる",
+                "example_en": "",
+                "example_ja": "",
+                "cloze_examples": app.encode_cloze_examples(
+                    [
+                        {"en": "The release checklist mitigates deployment risk.", "ja": "リリースチェックリストはデプロイ時のリスクを軽減します。"},
+                        {"en": "The form mitigates is used with he, she, or it.", "ja": "三単現の形を入れます。"},
+                    ]
+                ),
+            }
+        )
+
+        self.assertEqual(
+            examples,
+            [
+                {
+                    "en": "The release checklist mitigates deployment risk.",
+                    "ja": "リリースチェックリストはデプロイ時のリスクを軽減します。",
+                }
+            ],
+        )
 
     def test_encode_cloze_examples_deduplicates_and_limits_to_five(self) -> None:
         encoded = app.encode_cloze_examples(
