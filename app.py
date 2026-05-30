@@ -601,34 +601,34 @@ def generated_cloze_examples(values: object) -> list[dict[str, str]]:
     if part == "verb":
         forms = verb_forms(word)
         return [
-            {"en": f"They {forms['base']} the plan when priorities change.", "ja": f"優先順位が変わると、彼らは計画を{meaning}。"},
-            {"en": f"She {forms['third']} the project every week.", "ja": f"彼女は毎週そのプロジェクトを{meaning}。"},
-            {"en": f"The team {forms['past']} the process yesterday.", "ja": f"チームは昨日その手順を{meaning}。"},
-            {"en": f"The process was {forms['past']} by the team.", "ja": f"その手順はチームによって{meaning}。"},
-            {"en": f"We are {forms['ing']} the details now.", "ja": f"私たちは今、詳細を{meaning}。"},
+            {"en": f"Learners practice the verb {forms['base']} in this lesson.", "ja": f"基本形を入れます。意味: {meaning}"},
+            {"en": f"The form {forms['third']} is used with he, she, or it.", "ja": f"三単現の形を入れます。意味: {meaning}"},
+            {"en": f"The form {forms['past']} shows a past action.", "ja": f"過去形を入れます。意味: {meaning}"},
+            {"en": f"The phrase was {forms['past']} is a passive form.", "ja": f"受動態で使う形を入れます。意味: {meaning}"},
+            {"en": f"The form {forms['ing']} is used for an ongoing action.", "ja": f"進行形で使う形を入れます。意味: {meaning}"},
         ]
     if part == "adjective":
         return [
-            {"en": f"This is a {word} response.", "ja": f"これは{meaning}返答です。"},
-            {"en": f"The timing seems {word}.", "ja": f"そのタイミングは{meaning}ようです。"},
-            {"en": f"We need a more {word} approach.", "ja": f"私たちはより{meaning}方法が必要です。"},
-            {"en": f"Her comment was {word} for the meeting.", "ja": f"彼女の発言は会議にとって{meaning}ものでした。"},
-            {"en": f"The team chose the most {word} option.", "ja": f"チームは最も{meaning}選択肢を選びました。"},
+            {"en": f"The adjective {word} describes a noun.", "ja": f"形容詞を入れます。意味: {meaning}"},
+            {"en": f"The word {word} can appear before a noun.", "ja": f"名詞の前で使う形容詞を入れます。意味: {meaning}"},
+            {"en": f"The phrase more {word} makes a comparison.", "ja": f"比較表現で使う形を入れます。意味: {meaning}"},
+            {"en": f"The phrase most {word} shows the highest degree.", "ja": f"最上級表現で使う形を入れます。意味: {meaning}"},
+            {"en": f"In this sentence, {word} works as a complement.", "ja": f"補語として使う形容詞を入れます。意味: {meaning}"},
         ]
     if part == "adverb":
         return [
-            {"en": f"The team responded {word}.", "ja": f"チームは{meaning}対応しました。"},
-            {"en": f"Some people agreed; {word}, others objected.", "ja": f"賛成する人もいましたが、{meaning}反対する人もいました。"},
-            {"en": f"The result changed {word}.", "ja": f"結果は{meaning}変わりました。"},
-            {"en": f"She explained the point {word}.", "ja": f"彼女はその点を{meaning}説明しました。"},
-            {"en": f"The second option works {word}.", "ja": f"2つ目の選択肢は{meaning}機能します。"},
+            {"en": f"The adverb {word} modifies a verb or sentence.", "ja": f"副詞を入れます。意味: {meaning}"},
+            {"en": f"In this sentence, {word} connects the ideas.", "ja": f"文と文をつなぐ副詞を入れます。意味: {meaning}"},
+            {"en": f"The word {word} changes the direction of the argument.", "ja": f"論旨の流れを変える副詞を入れます。意味: {meaning}"},
+            {"en": f"Place {word} at the beginning for emphasis.", "ja": f"文頭で強調するときの副詞を入れます。意味: {meaning}"},
+            {"en": f"The sentence uses {word} to show contrast.", "ja": f"対比を示す副詞を入れます。意味: {meaning}"},
         ]
     return [
-        {"en": f"The report mentioned {word}.", "ja": f"報告書は{meaning}に触れていました。"},
-        {"en": f"We discussed {word} during the meeting.", "ja": f"私たちは会議で{meaning}について話しました。"},
-        {"en": f"The article explains {word} clearly.", "ja": f"その記事は{meaning}を明確に説明しています。"},
-        {"en": f"Understanding {word} takes practice.", "ja": f"{meaning}を理解するには練習が必要です。"},
-        {"en": f"The lesson focused on {word}.", "ja": f"その授業は{meaning}に焦点を当てました。"},
+        {"en": f"The word {word} appears in this sentence.", "ja": f"単語を入れます。意味: {meaning}"},
+        {"en": f"This lesson focuses on {word}.", "ja": f"学習中の単語を入れます。意味: {meaning}"},
+        {"en": f"Learners review {word} today.", "ja": f"復習する単語を入れます。意味: {meaning}"},
+        {"en": f"The example uses {word} clearly.", "ja": f"例文で使われる単語を入れます。意味: {meaning}"},
+        {"en": f"Understanding {word} takes practice.", "ja": f"練習する単語を入れます。意味: {meaning}"},
     ]
 
 

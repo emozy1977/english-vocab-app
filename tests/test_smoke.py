@@ -77,6 +77,8 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(len(examples), 5)
         self.assertIn("manages", " ".join(example["en"] for example in examples))
         self.assertIn("was managed", " ".join(example["en"] for example in examples))
+        self.assertNotIn("the plan", " ".join(example["en"] for example in examples))
+        self.assertTrue(all("意味:" in example["ja"] for example in examples[1:]))
 
     def test_encode_cloze_examples_deduplicates_and_limits_to_five(self) -> None:
         encoded = app.encode_cloze_examples(
