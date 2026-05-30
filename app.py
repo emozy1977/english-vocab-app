@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import hashlib
 import json
 import os
 import re
@@ -18,9 +19,13 @@ COUNT_COLUMNS = ["correct_count", "wrong_count"]
 BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
 SUPABASE_SETTINGS_TABLE = "app_settings"
+SUPABASE_TTS_BUCKET = "tts-audio"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
+DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
+DEFAULT_TTS_VOICE = "nova"
 LOW_FREQUENCY_GAP = 20
 CLOZE_EXAMPLE_COUNT = 5
+AUDIO_CACHE_DIR = Path(__file__).with_name(".audio_cache")
 SESSION_WORDS_KEY = "words_df"
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
@@ -258,6 +263,105 @@ def answer_diff_html(expected: object, actual: object) -> str:
         elif tag == "insert":
             pieces.append(f'<span class="diff-missing">[{expected_part}]</span>')
     return "".join(pieces)
+
+
+def tts_cache_key(text: object, model: str, voice: str) -> str:
+    source = f"{model}|{voice}|{str(text).strip()}".encode("utf-8")
+    return hashlib.sha256(source).hexdigest()
+
+
+def tts_cache_path(text: object, model: str, voice: str) -> str:
+    safe_model = re.sub(r"[^a-zA-Z0-9_.-]", "_", model)
+    safe_voice = re.sub(r"[^a-zA-Z0-9_.-]", "_", voice)
+    return f"{safe_model}/{safe_voice}/{tts_cache_key(text, model, voice)}.mp3"
+
+
+def read_tts_cache(path: str) -> bytes | None:
+    if supabase_enabled():
+        try:
+            return supabase_client().storage.from_(SUPABASE_TTS_BUCKET).download(path)
+        except Exception:
+            return None
+    local_path = AUDIO_CACHE_DIR / path
+    return local_path.read_bytes() if local_path.exists() else None
+
+
+def write_tts_cache(path: str, audio: bytes) -> None:
+    if supabase_enabled():
+        try:
+            supabase_client().storage.from_(SUPABASE_TTS_BUCKET).upload(
+                path,
+                audio,
+                {"content-type": "audio/mpeg", "upsert": "true"},
+            )
+        except Exception as exc:
+            raise RuntimeError("Supabase Storageに音声を保存できませんでした。Supabaseで tts-audio バケットを作成してください。") from exc
+        return
+    local_path = AUDIO_CACHE_DIR / path
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    local_path.write_bytes(audio)
+
+
+def ensure_tts_storage_ready() -> None:
+    if not supabase_enabled():
+        return
+    storage = supabase_client().storage
+    try:
+        storage.get_bucket(SUPABASE_TTS_BUCKET)
+    except Exception:
+        try:
+            storage.create_bucket(SUPABASE_TTS_BUCKET, options={"public": False})
+        except Exception as exc:
+            raise RuntimeError("Supabase Storageに tts-audio バケットを作成できませんでした。SupabaseのStorage画面で tts-audio という非公開バケットを作成してください。") from exc
+
+
+def generate_tts_audio(text: object, model: str, voice: str) -> bytes:
+    api_key = config("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY が未設定のため、高品質音声を生成できません。")
+    from openai import OpenAI
+
+    response = OpenAI(api_key=api_key).audio.speech.create(
+        model=model,
+        voice=voice,
+        input=str(text).strip(),
+        instructions=config("OPENAI_TTS_INSTRUCTIONS", "Speak naturally and clearly in American English for a listening practice exercise."),
+        response_format="mp3",
+        speed=0.92,
+    )
+    return bytes(response.content if hasattr(response, "content") else response.read())
+
+
+def get_or_create_tts_audio(text: object) -> tuple[bytes, str]:
+    model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
+    voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
+    path = tts_cache_path(text, model, voice)
+    cached = read_tts_cache(path)
+    if cached:
+        return cached, "保存済み"
+    ensure_tts_storage_ready()
+    audio = generate_tts_audio(text, model, voice)
+    write_tts_cache(path, audio)
+    return audio, "新規生成"
+
+
+def render_cached_tts_controls(text: object, key_prefix: str) -> None:
+    session_key = f"{key_prefix}_tts_audio"
+    source_key = f"{key_prefix}_tts_source"
+    if st.button("高品質音声を準備", key=f"{key_prefix}_prepare_tts", use_container_width=True):
+        try:
+            with st.spinner("音声を準備しています..."):
+                audio, source = get_or_create_tts_audio(text)
+        except Exception as exc:
+            st.warning(str(exc))
+        else:
+            st.session_state[session_key] = audio
+            st.session_state[source_key] = source
+    if session_key in st.session_state:
+        st.audio(st.session_state[session_key], format="audio/mpeg")
+        st.caption(f"高品質音声: {st.session_state.get(source_key, '保存済み')}。同じ英文は次回以降APIを呼ばずに再利用します。")
+    else:
+        st.caption("高品質音声は初回だけ生成して保存します。準備後は音声プレイヤーから再生できます。")
 
 
 def render_speech_button(text: object, label: str = "発音", rate: float = 0.86) -> None:
@@ -906,6 +1010,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     st.caption("新しい単語を先に出し、1回目で正解が多い単語は後半へ、頻度低の単語は直近20回に出ている間は通常単語を優先します。")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
     if mode == "listening":
+        render_cached_tts_controls(expected_answer, f"{mode}_{int(row['id'])}_{variant_index}")
         render_speech_button(expected_answer, label="英文を聞く", rate=0.82)
     current_low_frequency = normalize_bool(row.get("low_frequency", False))
     low_frequency = st.checkbox(
@@ -935,9 +1040,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
                 """,
                 unsafe_allow_html=True,
             )
-        if mode == "listening":
-            render_speech_button(result["expected"], label="もう一度聞く", rate=0.82)
-        else:
+        if mode != "listening":
             render_pronunciation_button(result["expected"])
         if result["correct"]:
             if mode == "listening" and variant_hint:

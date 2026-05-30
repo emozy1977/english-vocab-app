@@ -167,6 +167,13 @@ class AppSmokeTests(unittest.TestCase):
             app.normalize_sentence_answer("the team will implement it"),
         )
 
+    def test_tts_cache_path_is_stable_and_safe(self) -> None:
+        path = app.tts_cache_path("The team will implement it.", "gpt-4o-mini-tts", "nova")
+
+        self.assertTrue(path.startswith("gpt-4o-mini-tts/nova/"))
+        self.assertTrue(path.endswith(".mp3"))
+        self.assertNotIn("The team", path)
+
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [

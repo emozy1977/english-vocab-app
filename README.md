@@ -121,6 +121,8 @@ http://<MacのIPアドレス>:8501
 
 聞き取り問題では、穴埋め例文の英文を音声で再生し、聞こえた英文全体を入力して練習できます。判定では大文字小文字、句読点、余分な空白は無視します。
 
+聞き取り問題の `高品質音声を準備` は、初回だけOpenAI TTSでMP3を生成します。Supabase利用時はSupabase Storageの `tts-audio` バケットに保存し、同じ英文は次回以降APIを呼ばずに再利用します。Supabase未使用のローカル環境では `.audio_cache/` に保存します。
+
 デフォルトでは `gpt-5.4-mini` を使います。別のモデルを使う場合は、次のように設定できます。
 
 ```bash
@@ -277,10 +279,14 @@ SUPABASE_URL = "https://your-project.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
 OPENAI_API_KEY = "sk-..."
 OPENAI_MODEL = "gpt-5.4-mini"
+OPENAI_TTS_MODEL = "gpt-4o-mini-tts"
+OPENAI_TTS_VOICE = "nova"
 APP_PASSWORD = "好きなパスワード"
 ```
 
 `OPENAI_API_KEY` はAI単語追加を使う場合だけ必要です。`APP_PASSWORD` を設定すると、外から開いた時にパスワード画面が出ます。
+
+聞き取り問題の高品質音声キャッシュを使う場合は、Supabaseの `Storage` で `tts-audio` という名前の非公開バケットを作成してください。アプリは `SUPABASE_SERVICE_ROLE_KEY` で保存・読み込みします。
 
 ### 5. スマホで開く
 
