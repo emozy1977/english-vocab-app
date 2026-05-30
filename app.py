@@ -607,18 +607,17 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
-    c3, c4 = st.columns(2)
     history = st.session_state.get(history_key, [])
-    if c3.button("前へ", width="stretch", disabled=not bool(history)):
+    if st.button("次へ", width="stretch"):
+        st.session_state[history_key] = pushed_history(history, int(row["id"]))
+        st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
+        st.session_state[reveal_key] = False
+        st.rerun()
+    if st.button("前へ", width="stretch", disabled=not bool(history)):
         previous_id, remaining_history = pop_previous_id(history, df)
         st.session_state[history_key] = remaining_history
         if previous_id is not None:
             st.session_state[key] = previous_id
-        st.session_state[reveal_key] = False
-        st.rerun()
-    if c4.button("次へ", width="stretch"):
-        st.session_state[history_key] = pushed_history(history, int(row["id"]))
-        st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     return df
@@ -674,21 +673,20 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
         if result["correct"]:
             enable_return_to_next()
             st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
-            c1, c2 = st.columns(2)
             history = st.session_state.get(history_key, [])
-            if c1.button("前へ", width="stretch", disabled=not bool(history)):
+            if st.button("次へ", type="primary", width="stretch"):
+                st.session_state.pop(result_key, None)
+                st.session_state[answer_key] = ""
+                st.session_state[history_key] = pushed_history(history, int(row["id"]))
+                st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
+                st.rerun()
+            if st.button("前へ", width="stretch", disabled=not bool(history)):
                 previous_id, remaining_history = pop_previous_id(history, available)
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
                 st.session_state[history_key] = remaining_history
                 if previous_id is not None:
                     st.session_state[current_key] = previous_id
-                st.rerun()
-            if c2.button("次へ", type="primary", width="stretch"):
-                st.session_state.pop(result_key, None)
-                st.session_state[answer_key] = ""
-                st.session_state[history_key] = pushed_history(history, int(row["id"]))
-                st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
                 st.rerun()
             return df
         st.caption("もう一度入力して、正解できたら次へ進めます。")
