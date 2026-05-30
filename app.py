@@ -559,7 +559,7 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
             df, created = upsert_word(df, {"word": word.strip(), "pronunciation": pronunciation.strip(), "part_of_speech": part_of_speech, "meaning_ja": meaning.strip(), "example_en": example_en.strip(), "example_ja": example_ja.strip(), "category": category.strip() or "Uncategorized", "difficulty": difficulty, "low_frequency": low_frequency})
             st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
     with st.expander("登録済み単語"):
-        st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日"}), width="stretch", hide_index=True)
+        st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日"}), use_container_width=True, hide_index=True)
     return df
 
 
@@ -599,29 +599,29 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
             st.toast("出題頻度の設定を保存しました。")
             st.rerun()
     if not show_answer:
-        if st.button("表示", type="primary", width="stretch"):
+        if st.button("表示", type="primary", use_container_width=True):
             st.session_state[reveal_key] = True
             st.rerun()
     c1, c2 = st.columns(2)
-    if c1.button("覚えた", type="primary", width="stretch"):
+    if c1.button("覚えた", type="primary", use_container_width=True):
         df = update_stats(df, int(row["id"]), True)
         st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
-    if c2.button("苦手", width="stretch"):
+    if c2.button("苦手", use_container_width=True):
         df = update_stats(df, int(row["id"]), False)
         st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     history = st.session_state.get(history_key, [])
-    if st.button("次へ", width="stretch"):
+    if st.button("次へ", use_container_width=True):
         st.session_state[history_key] = pushed_history(history, int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
-    if st.button("前へ", width="stretch", disabled=not bool(history)):
+    if st.button("前へ", use_container_width=True, disabled=not bool(history)):
         previous_id, remaining_history = pop_previous_id(history, df)
         st.session_state[history_key] = remaining_history
         if previous_id is not None:
@@ -682,13 +682,13 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             enable_return_to_next()
             st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
             history = st.session_state.get(history_key, [])
-            if st.button("次へ", type="primary", width="stretch"):
+            if st.button("次へ", type="primary", use_container_width=True):
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
                 st.session_state[history_key] = pushed_history(history, int(row["id"]))
                 st.session_state[current_key] = next_id_for_session(available, int(row["id"]), recent_key)
                 st.rerun()
-            if st.button("前へ", width="stretch", disabled=not bool(history)):
+            if st.button("前へ", use_container_width=True, disabled=not bool(history)):
                 previous_id, remaining_history = pop_previous_id(history, available)
                 st.session_state.pop(result_key, None)
                 st.session_state[answer_key] = ""
@@ -719,7 +719,7 @@ def review_screen(df: pd.DataFrame) -> pd.DataFrame:
     c1.metric("単語数", len(df))
     c2.metric("不正解合計", int(df["wrong_count"].sum()))
     st.caption("苦手数（不正解 - 正解）が多い順に並びます。")
-    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied", "category", "difficulty", "low_frequency"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "weakness_score": "苦手数", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低"}), width="stretch", hide_index=True)
+    st.dataframe(p[["word", "part_of_speech", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied", "category", "difficulty", "low_frequency"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "weakness_score": "苦手数", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低"}), use_container_width=True, hide_index=True)
     return df
 
 
@@ -872,7 +872,7 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
     missing_pos = int((df["part_of_speech"].apply(normalize_pos) == "other").sum())
     with st.expander("既存単語の品詞を補完"):
         st.write(f"品詞が未設定の単語: {missing_pos}語")
-        if st.button("品詞補完", type="primary", width="stretch", disabled=not bool(api_key) or missing_pos == 0):
+        if st.button("品詞補完", type="primary", use_container_width=True, disabled=not bool(api_key) or missing_pos == 0):
             try:
                 with st.spinner("AIが既存単語の品詞を判定しています..."):
                     df, changed = classify_existing_pos(df, model_default, api_key)
