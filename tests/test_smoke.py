@@ -161,6 +161,12 @@ class AppSmokeTests(unittest.TestCase):
         self.assertIn("&lt;", html)
         self.assertNotIn("<test>", html)
 
+    def test_normalize_sentence_answer_ignores_case_punctuation_and_spacing(self) -> None:
+        self.assertEqual(
+            app.normalize_sentence_answer("  The team, will   implement it. "),
+            app.normalize_sentence_answer("the team will implement it"),
+        )
+
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [

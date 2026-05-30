@@ -260,8 +260,8 @@ def answer_diff_html(expected: object, actual: object) -> str:
     return "".join(pieces)
 
 
-def render_pronunciation_button(word: object) -> None:
-    speak_text = str(word).strip()
+def render_speech_button(text: object, label: str = "発音", rate: float = 0.86) -> None:
+    speak_text = str(text).strip()
     if not speak_text:
         return
 
@@ -269,22 +269,57 @@ def render_pronunciation_button(word: object) -> None:
         f"""
         <button id="speak-word" type="button" aria-label="発音を再生">
           <span class="speaker-icon">▶</span>
-          <span>発音</span>
+          <span>{esc(label)}</span>
         </button>
         <script>
           const button = document.getElementById("speak-word");
           const text = {json.dumps(speak_text)};
+          const preferredVoiceNames = [
+            "samantha",
+            "karen",
+            "moira",
+            "daniel",
+            "google us english",
+            "google uk english female",
+            "microsoft jenny",
+            "microsoft aria",
+            "microsoft guy"
+          ];
+          function pickEnglishVoice() {{
+            const voices = window.speechSynthesis.getVoices();
+            const englishVoices = voices.filter((voice) => (voice.lang || "").toLowerCase().startsWith("en"));
+            for (const preferredName of preferredVoiceNames) {{
+              const match = englishVoices.find((voice) => voice.name.toLowerCase().includes(preferredName));
+              if (match) return match;
+            }}
+            return englishVoices.find((voice) => (voice.lang || "").toLowerCase() === "en-us") || englishVoices[0] || null;
+          }}
+          function speak() {{
+            const utterance = new SpeechSynthesisUtterance(text);
+            const voice = pickEnglishVoice();
+            if (voice) {{
+              utterance.voice = voice;
+              utterance.lang = voice.lang || "en-US";
+            }} else {{
+              utterance.lang = "en-US";
+            }}
+            utterance.rate = {float(rate)};
+            utterance.pitch = 1;
+            window.speechSynthesis.cancel();
+            window.speechSynthesis.speak(utterance);
+          }}
           button.addEventListener("click", () => {{
             if (!("speechSynthesis" in window)) {{
               button.textContent = "このブラウザでは音声再生できません";
               return;
             }}
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = "en-US";
-            utterance.rate = 0.88;
-            utterance.pitch = 1;
-            window.speechSynthesis.speak(utterance);
+            const voices = window.speechSynthesis.getVoices();
+            if (voices.length === 0) {{
+              window.speechSynthesis.onvoiceschanged = speak;
+              setTimeout(speak, 200);
+              return;
+            }}
+            speak();
           }});
         </script>
         <style>
@@ -321,6 +356,10 @@ def render_pronunciation_button(word: object) -> None:
         """,
         height=54,
     )
+
+
+def render_pronunciation_button(word: object) -> None:
+    render_speech_button(word, label="発音", rate=0.86)
 
 
 def enable_return_to_next() -> None:
@@ -361,7 +400,7 @@ def focus_answer_input() -> None:
           const focusAnswerInput = () => {
             const inputs = Array.from(parentDoc.querySelectorAll("input"));
             const answerInput = inputs.find((input) =>
-              input.getAttribute("aria-label") === "英単語を入力" && !input.disabled
+              ["英単語を入力", "聞こえた英文を入力"].includes(input.getAttribute("aria-label")) && !input.disabled
             );
             if (answerInput) {
               answerInput.focus({ preventScroll: true });
@@ -381,6 +420,12 @@ def today() -> str:
 
 def norm(value: str) -> str:
     return value.strip().lower()
+
+
+def normalize_sentence_answer(value: object) -> str:
+    text = str(value).strip().lower()
+    text = re.sub(r"[^a-z0-9'\s]", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def with_scores(df: pd.DataFrame) -> pd.DataFrame:
@@ -845,14 +890,21 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
             st.session_state[variant_key] = {"id": int(row["id"]), "index": variant_index}
         variant_index = int(st.session_state.get(variant_key, {}).get("index", 0)) % max(len(variants), 1)
         variant = variants[variant_index]
-        prompt, expected_answer = blank_sentence_and_answer(variant["en"], row["word"])
+        if mode == "listening":
+            prompt = "音声を聞いて、聞こえた英文をすべて入力してください。"
+            expected_answer = str(variant["en"])
+        else:
+            prompt, expected_answer = blank_sentence_and_answer(variant["en"], row["word"])
         variant_hint = variant.get("ja", "")
     hint = f"{row['part_of_speech']} ・ {row['category']} ・ Lv {row['difficulty']}" if mode == "written" else row["example_ja"]
     if mode != "written" and variant_hint:
         hint = variant_hint
-    st.subheader("筆記問題" if mode == "written" else "穴埋め問題")
+    titles = {"written": "筆記問題", "fill": "穴埋め問題", "listening": "聞き取り問題"}
+    st.subheader(titles.get(mode, "問題"))
     st.caption("新しい単語を先に出し、1回目で正解が多い単語は後半へ、頻度低の単語は直近20回に出ている間は通常単語を優先します。")
     st.markdown(f'<div class="quiz-card"><div class="quiz-label">問題</div><div class="quiz-prompt">{esc(prompt)}</div><div class="hint-line">{esc(hint)}</div></div>', unsafe_allow_html=True)
+    if mode == "listening":
+        render_speech_button(expected_answer, label="英文を聞く", rate=0.82)
     current_low_frequency = normalize_bool(row.get("low_frequency", False))
     low_frequency = st.checkbox(
         "この単語の出題頻度を下げる",
@@ -881,7 +933,10 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
                 """,
                 unsafe_allow_html=True,
             )
-        render_pronunciation_button(result["expected"])
+        if mode == "listening":
+            render_speech_button(result["expected"], label="もう一度聞く", rate=0.82)
+        else:
+            render_pronunciation_button(result["expected"])
         if result["correct"]:
             enable_return_to_next()
             st.caption("次へボタン、またはReturnキーで次の問題へ進めます。")
@@ -904,12 +959,13 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
                 st.rerun()
             return df
         st.caption("もう一度入力して、正解できたら次へ進めます。")
+    input_label = "聞こえた英文を入力" if mode == "listening" else "英単語を入力"
     with st.form(f"{mode}_form", clear_on_submit=True):
-        answer = st.text_input("英単語を入力", key=answer_key)
+        answer = st.text_input(input_label, key=answer_key)
         submitted = st.form_submit_button("判定")
     focus_answer_input()
     if submitted:
-        correct = norm(answer) == norm(expected_answer)
+        correct = normalize_sentence_answer(answer) == normalize_sentence_answer(expected_answer) if mode == "listening" else norm(answer) == norm(expected_answer)
         if is_first_quiz_attempt(st.session_state.get(result_key), int(row["id"])):
             df = update_stats(df, int(row["id"]), correct)
         st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": expected_answer, "answer": answer}
@@ -1277,7 +1333,7 @@ def main() -> None:
     st.title("英単語帳")
     df = words_for_session()
 
-    menu = st.sidebar.radio("モード", ["学習カード", "筆記問題", "穴埋め問題", "復習", "単語登録", "AI追加"], index=0)
+    menu = st.sidebar.radio("モード", ["学習カード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
     st.sidebar.write(f"単語数: {len(df)}")
 
     if menu == "学習カード":
@@ -1286,6 +1342,8 @@ def main() -> None:
         df = quiz_screen(df, "written")
     elif menu == "穴埋め問題":
         df = quiz_screen(df, "fill")
+    elif menu == "聞き取り問題":
+        df = quiz_screen(df, "listening")
     elif menu == "復習":
         df = review_screen(df)
     elif menu == "単語登録":
