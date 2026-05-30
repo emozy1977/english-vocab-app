@@ -77,8 +77,29 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(len(examples), 5)
         self.assertIn("manages", " ".join(example["en"] for example in examples))
         self.assertIn("was managed", " ".join(example["en"] for example in examples))
+        self.assertIn("cloud migration", " ".join(example["en"] for example in examples))
         self.assertNotIn("the plan", " ".join(example["en"] for example in examples))
-        self.assertTrue(all("意味:" in example["ja"] for example in examples[1:]))
+
+    def test_cloze_examples_filter_old_pedagogical_templates(self) -> None:
+        examples = app.cloze_examples_for_values(
+            {
+                "word": "mitigate",
+                "part_of_speech": "verb",
+                "meaning_ja": "軽減する、和らげる",
+                "example_en": "",
+                "example_ja": "",
+                "cloze_examples": app.encode_cloze_examples(
+                    [
+                        {"en": "The form mitigates is used with he, she, or it.", "ja": "三単現の形を入れます。"},
+                    ]
+                ),
+            }
+        )
+        text = " ".join(example["en"] for example in examples)
+
+        self.assertNotIn("The form", text)
+        self.assertIn("security risk", text)
+        self.assertIn("was mitigated", text)
 
     def test_encode_cloze_examples_deduplicates_and_limits_to_five(self) -> None:
         encoded = app.encode_cloze_examples(

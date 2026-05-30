@@ -591,6 +591,43 @@ def verb_forms(base_word: object) -> dict[str, str]:
     return {"base": base, "third": third, "past": past, "ing": ing}
 
 
+def is_pedagogical_cloze_example(example: dict[str, str]) -> bool:
+    text = f"{example.get('en', '')} {example.get('ja', '')}".lower()
+    markers = [
+        "the form ",
+        "learners practice",
+        "passive form",
+        "ongoing action",
+        "basic form",
+        "adjective ",
+        "adverb ",
+        "単語を入れます",
+        "基本形を入れます",
+        "三単現の形を入れます",
+        "過去形を入れます",
+        "受動態で使う形",
+        "進行形で使う形",
+        "形容詞を入れます",
+        "副詞を入れます",
+    ]
+    return any(marker in text for marker in markers)
+
+
+def natural_verb_context(word: str) -> tuple[str, str, str, str, str]:
+    normalized = word.strip().lower()
+    contexts = {
+        "mitigate": ("mitigate", "the security risk", "before the production release", "セキュリティリスク", "本番リリース前"),
+        "refund": ("refund", "the duplicate charge", "after the billing review", "重複請求", "請求レビュー後"),
+        "manage": ("manage", "the cloud migration", "during the rollout", "クラウド移行", "展開期間中"),
+        "implement": ("implement", "the new authentication flow", "in the next sprint", "新しい認証フロー", "次のスプリント"),
+        "incorporate": ("incorporate", "customer feedback", "into the product roadmap", "顧客フィードバック", "プロダクトロードマップ"),
+        "consolidate": ("consolidate", "the weekly reports", "into one dashboard", "週次レポート", "1つのダッシュボード"),
+        "overlook": ("overlook", "a critical alert", "during the incident review", "重要なアラート", "インシデントレビュー中"),
+        "elaborate": ("elaborate on", "the migration plan", "during the stakeholder meeting", "移行計画", "関係者会議"),
+    }
+    return contexts.get(normalized, (normalized, "the customer request", "in the support workflow", "顧客リクエスト", "サポート業務"))
+
+
 def generated_cloze_examples(values: object) -> list[dict[str, str]]:
     getter = values.get if hasattr(values, "get") else lambda key, default="": getattr(values, key, default)
     word = str(getter("word", "")).strip()
@@ -600,12 +637,17 @@ def generated_cloze_examples(values: object) -> list[dict[str, str]]:
         return []
     if part == "verb":
         forms = verb_forms(word)
+        verb_phrase, obj, context, object_ja, context_ja = natural_verb_context(word)
+        base_phrase = verb_phrase.replace(word.lower(), forms["base"], 1)
+        third_phrase = verb_phrase.replace(word.lower(), forms["third"], 1)
+        past_phrase = verb_phrase.replace(word.lower(), forms["past"], 1)
+        ing_phrase = verb_phrase.replace(word.lower(), forms["ing"], 1)
         return [
-            {"en": f"Learners practice the verb {forms['base']} in this lesson.", "ja": f"基本形を入れます。意味: {meaning}"},
-            {"en": f"The form {forms['third']} is used with he, she, or it.", "ja": f"三単現の形を入れます。意味: {meaning}"},
-            {"en": f"The form {forms['past']} shows a past action.", "ja": f"過去形を入れます。意味: {meaning}"},
-            {"en": f"The phrase was {forms['past']} is a passive form.", "ja": f"受動態で使う形を入れます。意味: {meaning}"},
-            {"en": f"The form {forms['ing']} is used for an ongoing action.", "ja": f"進行形で使う形を入れます。意味: {meaning}"},
+            {"en": f"The team will {base_phrase} {obj} {context}.", "ja": f"{context_ja}の対応です。対象: {object_ja}。意味: {meaning}"},
+            {"en": f"She {third_phrase} {obj} every Monday morning.", "ja": f"毎週月曜の業務対応です。対象: {object_ja}。意味: {meaning}"},
+            {"en": f"The operations team {past_phrase} {obj} yesterday.", "ja": f"昨日の運用チームの対応です。対象: {object_ja}。意味: {meaning}"},
+            {"en": f"{obj.capitalize()} was {forms['past']} after the review meeting.", "ja": f"レビュー会議後の受動態の文です。対象: {object_ja}。意味: {meaning}"},
+            {"en": f"We are {ing_phrase} {obj} before the client demo.", "ja": f"顧客デモ前の進行中の対応です。対象: {object_ja}。意味: {meaning}"},
         ]
     if part == "adjective":
         return [
@@ -639,7 +681,11 @@ def cloze_examples_for_values(values: object) -> list[dict[str, str]]:
     primary_ja = str(getter("example_ja", "")).strip()
     if primary_en:
         examples.append({"en": primary_en, "ja": primary_ja})
-    examples.extend(parse_cloze_examples(getter("cloze_examples", "")))
+    examples.extend(
+        example
+        for example in parse_cloze_examples(getter("cloze_examples", ""))
+        if not is_pedagogical_cloze_example(example)
+    )
     examples.extend(generated_cloze_examples(values))
     return parse_cloze_examples(encode_cloze_examples(examples))
 
