@@ -438,6 +438,59 @@ class AppSmokeTests(unittest.TestCase):
             self.assertIn(f"- [x] {task}", backlog.read_text(encoding="utf-8"))
             self.assertIn(task, history.read_text(encoding="utf-8"))
 
+    # Additional tests focusing on mixed ordering logic and next_id rotation
+    def test_mixed_ids_newest_first_order(self) -> None:
+        # New words should be ordered newest-first (by id desc) among themselves
+        df = pd.DataFrame(
+            [
+                [9, "old", "", "other", "古い", "", "", "[]", "Test", "3", False, 1, 0, "2026-05-20"],
+                [10, "new_a", "", "other", "新規A", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                [11, "new_b", "", "other", "新規B", "", "", "[]", "Test", "3", False, 0, 0, ""],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        ids = app.mixed_ids(app.normalize_df(df))
+        # Expect new_b (id 11) before new_a (id 10), then difficult/regular
+        self.assertTrue(ids.index(11) < ids.index(10))
+
+    def test_mixed_ids_combines_new_and_difficult_order(self) -> None:
+        # Ensure new words come first (newest-first), then difficult words ordered by weakness and wrong_count
+        df = pd.DataFrame(
+            [
+                [1, "reg1", "", "other", "通常1", "", "", "[]", "Test", "3", False, 1, 0, "2026-05-20"],
+                [2, "diff1", "", "other", "苦手1", "", "", "[]", "Test", "3", False, 0, 3, "2026-05-20"],
+                [3, "diff2", "", "other", "苦手2", "", "", "[]", "Test", "3", False, 1, 4, "2026-05-20"],
+                [4, "reg2", "", "other", "通常2", "", "", "[]", "Test", "3", False, 2, 1, "2026-05-20"],
+                [5, "new1", "", "other", "新規1", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                [6, "new2", "", "other", "新規2", "", "", "[]", "Test", "3", False, 0, 0, ""],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        ids = app.mixed_ids(app.normalize_df(df))
+        # First two should be new words in newest-first order
+        self.assertEqual(ids[0], 6)
+        self.assertEqual(ids[1], 5)
+        # Next should be the more difficult one (diff2 has higher wrong_count)
+        self.assertEqual(ids[2], 3)
+        self.assertEqual(ids[3], 2)
+
+    def test_next_id_rotates_to_next_candidate(self) -> None:
+        # Confirm next_id advances to the next id in mixed ordering when current is present
+        df = pd.DataFrame(
+            [
+                [1, "a", "", "other", "A", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                [2, "b", "", "other", "B", "", "", "[]", "Test", "3", False, 0, 0, ""],
+                [3, "c", "", "other", "C", "", "", "[]", "Test", "3", False, 1, 0, "2026-05-20"],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        n = app.next_id(app.normalize_df(df), current=3, recent_ids=[])
+        # If mixed order is [3,2,1] then next after 3 should be 2
+        self.assertEqual(n, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
