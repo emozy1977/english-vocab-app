@@ -6,9 +6,11 @@ import json
 import os
 import re
 from datetime import date
+from datetime import datetime
 from datetime import timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -24,6 +26,7 @@ SUPABASE_TTS_BUCKET = "tts-audio"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
 DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_TTS_VOICE = "nova"
+DEFAULT_TIMEZONE = "Asia/Tokyo"
 LOW_FREQUENCY_GAP = 20
 CLOZE_EXAMPLE_COUNT = 5
 AUDIO_CACHE_DIR = Path(__file__).with_name(".audio_cache")
@@ -520,8 +523,15 @@ def focus_answer_input() -> None:
     )
 
 
+def app_timezone() -> ZoneInfo:
+    try:
+        return ZoneInfo(config("APP_TIMEZONE", DEFAULT_TIMEZONE) or DEFAULT_TIMEZONE)
+    except Exception:
+        return ZoneInfo(DEFAULT_TIMEZONE)
+
+
 def today() -> str:
-    return date.today().isoformat()
+    return datetime.now(app_timezone()).date().isoformat()
 
 
 def norm(value: str) -> str:
@@ -603,6 +613,11 @@ def priority(df: pd.DataFrame) -> pd.DataFrame:
     work = with_scores(df)
     work["_last"] = pd.to_datetime(work["last_studied"], errors="coerce").fillna(pd.Timestamp("1970-01-01"))
     return work.sort_values(["weakness_score", "_last", "_wrong", "word"], ascending=[False, True, False, True]).drop(columns=["_correct", "_wrong", "_last"])
+
+
+def weak_words(df: pd.DataFrame) -> pd.DataFrame:
+    ordered = priority(df)
+    return ordered[ordered["weakness_score"] > 0]
 
 
 def newest_first(df: pd.DataFrame) -> pd.DataFrame:
@@ -969,7 +984,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
     accuracy_percent = round(float(stats["accuracy"]) * 100)
     goal_percent = round(float(stats["goal_percent"]) * 100)
     st.subheader("ダッシュボード")
-    st.caption("学習の進み具合を、今ある学習履歴からまとめます。連続学習日数は最終学習日の記録から計算しています。")
+    st.caption(f"学習の進み具合を、日本時間（{today()}）で集計します。今日の学習は、最終学習日が今日の単語数です。")
     st.markdown(
         f"""
         <div class="dashboard-grid">
@@ -977,7 +992,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
           {dashboard_metric("今日の学習", f"{stats['today_count']}語", f"目標 {stats['daily_goal']}語")}
           {dashboard_metric("正解率", f"{accuracy_percent}%", f"正解 {stats['total_correct']} / 不正解 {stats['total_wrong']}")}
           {dashboard_metric("連続学習", f"{stats['streak']}日", "記録上の連続日数")}
-          {dashboard_metric("苦手", f"{stats['weak_count']}語", "不正解 - 正解 > 0")}
+          {dashboard_metric("苦手", f"{stats['weak_count']}語", f"全{stats['total_words']}語を評価")}
           {dashboard_metric("定着", f"{stats['mastered_count']}語", "正解3回以上")}
         </div>
         <div class="goal-panel">
@@ -990,11 +1005,11 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         """,
         unsafe_allow_html=True,
     )
-    weak_words = priority(df).head(5)
-    if not weak_words.empty:
+    weak_word_rows = weak_words(df).head(5)
+    if not weak_word_rows.empty:
         st.markdown("#### 次に減らしたい苦手")
         st.dataframe(
-            weak_words[["word", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied"]].rename(
+            weak_word_rows[["word", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied"]].rename(
                 columns={
                     "word": "英単語",
                     "meaning_ja": "意味",
@@ -1573,13 +1588,13 @@ def main() -> None:
     st.title("英単語帳")
     df = words_for_session()
 
-    menu = st.sidebar.radio("モード", ["学習カード", "ダッシュボード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
+    menu = st.sidebar.radio("モード", ["ダッシュボード", "学習カード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
     st.sidebar.write(f"単語数: {len(df)}")
 
-    if menu == "学習カード":
-        df = study_screen(df)
-    elif menu == "ダッシュボード":
+    if menu == "ダッシュボード":
         df = dashboard_screen(df)
+    elif menu == "学習カード":
+        df = study_screen(df)
     elif menu == "筆記問題":
         df = quiz_screen(df, "written")
     elif menu == "穴埋め問題":

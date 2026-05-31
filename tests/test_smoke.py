@@ -167,6 +167,9 @@ class AppSmokeTests(unittest.TestCase):
             app.normalize_sentence_answer("the team will implement it"),
         )
 
+    def test_today_uses_japan_timezone_by_default(self) -> None:
+        self.assertEqual(app.DEFAULT_TIMEZONE, "Asia/Tokyo")
+
     def test_tts_cache_path_is_stable_and_safe(self) -> None:
         path = app.tts_cache_path("The team will implement it.", "gpt-4o-mini-tts", "nova")
 
@@ -213,6 +216,21 @@ class AppSmokeTests(unittest.TestCase):
         streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
 
         self.assertEqual(streak, 2)
+
+    def test_weak_words_filters_only_positive_weakness_scores(self) -> None:
+        df = pd.DataFrame(
+            [
+                [1, "strong", "", "other", "得意", "", "", "[]", "Test", "3", False, 5, 1, "2026-05-20"],
+                [2, "equal", "", "other", "同じ", "", "", "[]", "Test", "3", False, 2, 2, "2026-05-20"],
+                [3, "weak", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 4, "2026-05-20"],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        weak = app.weak_words(app.normalize_df(df))
+
+        self.assertEqual(weak["word"].tolist(), ["weak"])
+        self.assertEqual(int(weak.iloc[0]["weakness_score"]), 3)
 
     def test_mixed_ids_includes_difficult_new_and_regular_words(self) -> None:
         df = pd.DataFrame(
