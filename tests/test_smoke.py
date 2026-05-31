@@ -234,6 +234,20 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(stats["today_wrong"], 0)
         self.assertTrue(stats["event_log_available"])
 
+    def test_daily_event_counts_fills_missing_days(self) -> None:
+        events = pd.DataFrame(
+            [
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": True, "studied_on": "2026-05-30", "studied_at": "2026-05-30T08:00:00+09:00"},
+                {"word_id": 2, "word": "beta", "mode": "fill", "correct": False, "studied_on": "2026-06-01", "studied_at": "2026-06-01T08:00:00+09:00"},
+                {"word_id": 3, "word": "gamma", "mode": "study", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T09:00:00+09:00"},
+            ]
+        )
+
+        counts = app.daily_event_counts(events, today_value="2026-06-01", days=4)
+
+        self.assertEqual(counts["日付"].tolist(), ["2026-05-29", "2026-05-30", "2026-05-31", "2026-06-01"])
+        self.assertEqual(counts["学習回数"].tolist(), [0, 1, 0, 2])
+
     def test_consecutive_learning_days_keeps_yesterday_streak_visible(self) -> None:
         streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
 

@@ -687,6 +687,19 @@ def dashboard_stats(df: pd.DataFrame, events: pd.DataFrame | None = None, today_
     }
 
 
+def daily_event_counts(events: pd.DataFrame, today_value: str | None = None, days: int = 14) -> pd.DataFrame:
+    today_date = date.fromisoformat(today_value or today())
+    start_date = today_date - timedelta(days=max(int(days), 1) - 1)
+    labels = [(start_date + timedelta(days=offset)).isoformat() for offset in range(max(int(days), 1))]
+    counts = dict.fromkeys(labels, 0)
+    event_log = normalize_study_events(events)
+    if not event_log.empty:
+        grouped = event_log["studied_on"].astype(str).str[:10].value_counts().to_dict()
+        for label in labels:
+            counts[label] = int(grouped.get(label, 0))
+    return pd.DataFrame({"日付": labels, "学習回数": [counts[label] for label in labels]})
+
+
 def priority(df: pd.DataFrame) -> pd.DataFrame:
     work = with_scores(df)
     work["_last"] = pd.to_datetime(work["last_studied"], errors="coerce").fillna(pd.Timestamp("1970-01-01"))
@@ -1086,6 +1099,14 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         """,
         unsafe_allow_html=True,
     )
+    if not events.empty:
+        daily_counts = daily_event_counts(events)
+        chart_data = daily_counts.set_index("日付")
+        st.markdown("#### 日別の学習回数")
+        st.bar_chart(chart_data, height=220)
+        total_recent = int(daily_counts["学習回数"].sum())
+        active_days = int((daily_counts["学習回数"] > 0).sum())
+        st.caption(f"直近14日: 合計 {total_recent}回 / 学習した日 {active_days}日")
     weak_word_rows = weak_words(df).head(5)
     if not weak_word_rows.empty:
         st.markdown("#### 次に減らしたい苦手")
