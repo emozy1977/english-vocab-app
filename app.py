@@ -17,10 +17,12 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 DATA_FILE = Path(__file__).with_name("words.csv")
+STUDY_EVENTS_FILE = Path(__file__).with_name("study_events.csv")
 COLUMNS = ["id", "word", "pronunciation", "part_of_speech", "meaning_ja", "example_en", "example_ja", "cloze_examples", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]
 COUNT_COLUMNS = ["correct_count", "wrong_count"]
 BOOL_COLUMNS = ["low_frequency"]
 SUPABASE_TABLE = "words"
+SUPABASE_STUDY_EVENTS_TABLE = "study_events"
 SUPABASE_SETTINGS_TABLE = "app_settings"
 SUPABASE_TTS_BUCKET = "tts-audio"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
@@ -32,6 +34,8 @@ CLOZE_EXAMPLE_COUNT = 5
 AUDIO_CACHE_DIR = Path(__file__).with_name(".audio_cache")
 DEFAULT_DAILY_GOAL = 5
 SESSION_WORDS_KEY = "words_df"
+STUDY_EVENT_COLUMNS = ["word_id", "word", "mode", "correct", "studied_on", "studied_at"]
+MODE_LABELS = {"study": "学習カード", "written": "筆記", "fill": "穴埋め", "listening": "聞き取り"}
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
 
@@ -162,6 +166,65 @@ def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
     for col in BOOL_COLUMNS:
         df[col] = df[col].apply(normalize_bool)
     return df
+
+
+def normalize_study_events(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return pd.DataFrame(columns=STUDY_EVENT_COLUMNS)
+    df = df.copy()
+    for col in STUDY_EVENT_COLUMNS:
+        if col not in df.columns:
+            df[col] = False if col == "correct" else 0 if col == "word_id" else ""
+    df = df[STUDY_EVENT_COLUMNS].fillna("")
+    df["word_id"] = pd.to_numeric(df["word_id"], errors="coerce").fillna(0).astype(int)
+    df["correct"] = df["correct"].apply(normalize_bool)
+    for col in ["word", "mode", "studied_on", "studied_at"]:
+        df[col] = df[col].astype(str)
+    return df
+
+
+def load_study_events(limit: int | None = None) -> pd.DataFrame:
+    if supabase_enabled():
+        try:
+            query = supabase_client().table(SUPABASE_STUDY_EVENTS_TABLE).select("*").order("studied_at", desc=True)
+            if limit:
+                query = query.limit(int(limit))
+            rows = query.execute().data or []
+            return normalize_study_events(pd.DataFrame(rows))
+        except Exception:
+            return normalize_study_events(pd.DataFrame())
+    if not STUDY_EVENTS_FILE.exists():
+        return normalize_study_events(pd.DataFrame())
+    events = normalize_study_events(pd.read_csv(STUDY_EVENTS_FILE, keep_default_na=False))
+    events = events.sort_values("studied_at", ascending=False)
+    return events.head(int(limit)) if limit else events
+
+
+def study_event_from_row(row: pd.Series | dict[str, object], mode: str, correct: bool) -> dict[str, object]:
+    row_dict = row.to_dict() if isinstance(row, pd.Series) else dict(row)
+    now = datetime.now(app_timezone()).isoformat(timespec="seconds")
+    return {
+        "word_id": int(row_dict.get("id", 0) or 0),
+        "word": str(row_dict.get("word", "")),
+        "mode": str(mode),
+        "correct": bool(correct),
+        "studied_on": today(),
+        "studied_at": now,
+    }
+
+
+def record_study_event(row: pd.Series | dict[str, object], mode: str, correct: bool) -> bool:
+    event = study_event_from_row(row, mode, correct)
+    if supabase_enabled():
+        try:
+            supabase_client().table(SUPABASE_STUDY_EVENTS_TABLE).insert(event).execute()
+            return True
+        except Exception:
+            return False
+    events = load_study_events()
+    updated = pd.concat([events, normalize_study_events(pd.DataFrame([event]))], ignore_index=True)
+    updated[STUDY_EVENT_COLUMNS].to_csv(STUDY_EVENTS_FILE, index=False)
+    return True
 
 
 def save_rows(rows: list[dict[str, object]]) -> None:
@@ -581,15 +644,27 @@ def consecutive_learning_days(studied_dates: set[str], today_value: str | None =
     return streak
 
 
-def dashboard_stats(df: pd.DataFrame, today_value: str | None = None, daily_goal: int = DEFAULT_DAILY_GOAL) -> dict[str, int | float]:
+def dashboard_stats(df: pd.DataFrame, events: pd.DataFrame | None = None, today_value: str | None = None, daily_goal: int = DEFAULT_DAILY_GOAL) -> dict[str, int | float | bool]:
     work = with_scores(normalize_df(df))
+    event_log = normalize_study_events(events) if events is not None else pd.DataFrame(columns=STUDY_EVENT_COLUMNS)
+    has_event_log = not event_log.empty
     today_text = today_value or today()
     total_words = len(work)
     total_correct = int(work["_correct"].sum()) if not work.empty else 0
     total_wrong = int(work["_wrong"].sum()) if not work.empty else 0
     total_answers = total_correct + total_wrong
     attempted = (work["_correct"] + work["_wrong"]) > 0 if not work.empty else pd.Series(dtype=bool)
-    today_count = int((work["last_studied"].astype(str).str[:10] == today_text).sum()) if not work.empty else 0
+    if has_event_log:
+        today_events = event_log[event_log["studied_on"].astype(str).str[:10] == today_text]
+        today_count = int(len(today_events))
+        today_correct = int(today_events["correct"].sum())
+        today_wrong = today_count - today_correct
+        studied_dates = set(event_log["studied_on"].astype(str).str[:10].loc[event_log["studied_on"].astype(str).str.strip() != ""])
+    else:
+        today_count = int((work["last_studied"].astype(str).str[:10] == today_text).sum()) if not work.empty else 0
+        today_correct = 0
+        today_wrong = 0
+        studied_dates = studied_date_strings(work)
     weak_count = int((work["weakness_score"] > 0).sum()) if not work.empty else 0
     new_count = int((~attempted).sum()) if not work.empty else 0
     mastered_count = int(((work["_correct"] >= 3) & (work["weakness_score"] <= 0)).sum()) if not work.empty else 0
@@ -602,10 +677,13 @@ def dashboard_stats(df: pd.DataFrame, today_value: str | None = None, daily_goal
         "accuracy": total_correct / total_answers if total_answers else 0.0,
         "total_correct": total_correct,
         "total_wrong": total_wrong,
+        "today_correct": today_correct,
+        "today_wrong": today_wrong,
         "weak_count": weak_count,
         "new_count": new_count,
         "mastered_count": mastered_count,
-        "streak": consecutive_learning_days(studied_date_strings(work), today_text),
+        "streak": consecutive_learning_days(studied_dates, today_text),
+        "event_log_available": has_event_log,
     }
 
 
@@ -719,7 +797,7 @@ def row_by_id(df: pd.DataFrame, word_id: int):
     return None if rows.empty else rows.iloc[0]
 
 
-def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
+def update_stats(df: pd.DataFrame, word_id: int, correct: bool, mode: str = "study") -> pd.DataFrame:
     df = df.copy()
     mask = df["id"] == word_id
     if not mask.any():
@@ -733,6 +811,7 @@ def update_stats(df: pd.DataFrame, word_id: int, correct: bool) -> pd.DataFrame:
         save_stats(row)
     else:
         save_words(df)
+    record_study_event(row, mode, correct)
     return set_words(df)
 
 
@@ -980,16 +1059,18 @@ def dashboard_metric(label: str, value: str, note: str = "") -> str:
 
 
 def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
-    stats = dashboard_stats(df)
+    events = load_study_events()
+    stats = dashboard_stats(df, events)
     accuracy_percent = round(float(stats["accuracy"]) * 100)
     goal_percent = round(float(stats["goal_percent"]) * 100)
+    today_note = f"正解 {stats['today_correct']} / 不正解 {stats['today_wrong']}" if stats["event_log_available"] else f"目標 {stats['daily_goal']}語"
     st.subheader("ダッシュボード")
-    st.caption(f"学習の進み具合を、日本時間（{today()}）で集計します。今日の学習は、最終学習日が今日の単語数です。")
+    st.caption(f"学習の進み具合を、日本時間（{today()}）で集計します。学習ログがある場合、今日の学習は記録された解答数です。")
     st.markdown(
         f"""
         <div class="dashboard-grid">
           {dashboard_metric("総単語数", f"{stats['total_words']}語", "登録済み")}
-          {dashboard_metric("今日の学習", f"{stats['today_count']}語", f"目標 {stats['daily_goal']}語")}
+          {dashboard_metric("今日の学習", f"{stats['today_count']}回", today_note)}
           {dashboard_metric("正解率", f"{accuracy_percent}%", f"正解 {stats['total_correct']} / 不正解 {stats['total_wrong']}")}
           {dashboard_metric("連続学習", f"{stats['streak']}日", "記録上の連続日数")}
           {dashboard_metric("苦手", f"{stats['weak_count']}語", f"全{stats['total_words']}語を評価")}
@@ -998,7 +1079,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         <div class="goal-panel">
           <div class="goal-row">
             <span>今日の目標</span>
-            <strong>{stats['today_count']} / {stats['daily_goal']}語</strong>
+            <strong>{stats['today_count']} / {stats['daily_goal']}回</strong>
           </div>
           <div class="progress-track"><div class="progress-fill" style="width:{goal_percent}%"></div></div>
         </div>
@@ -1017,6 +1098,23 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
                     "correct_count": "正解",
                     "wrong_count": "不正解",
                     "last_studied": "最終学習日",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    if not events.empty:
+        recent_events = events.head(10).copy()
+        recent_events["mode_label"] = recent_events["mode"].map(MODE_LABELS).fillna(recent_events["mode"])
+        recent_events["result_label"] = recent_events["correct"].map({True: "正解", False: "不正解"})
+        st.markdown("#### 最近の学習ログ")
+        st.dataframe(
+            recent_events[["studied_at", "word", "mode_label", "result_label"]].rename(
+                columns={
+                    "studied_at": "日時",
+                    "word": "英単語",
+                    "mode_label": "形式",
+                    "result_label": "結果",
                 }
             ),
             use_container_width=True,
@@ -1066,13 +1164,13 @@ def study_screen(df: pd.DataFrame) -> pd.DataFrame:
             st.rerun()
     c1, c2 = st.columns(2)
     if c1.button("覚えた", type="primary", use_container_width=True):
-        df = update_stats(df, int(row["id"]), True)
+        df = update_stats(df, int(row["id"]), True, "study")
         st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
         st.rerun()
     if c2.button("苦手", use_container_width=True):
-        df = update_stats(df, int(row["id"]), False)
+        df = update_stats(df, int(row["id"]), False, "study")
         st.session_state[history_key] = pushed_history(st.session_state.get(history_key, []), int(row["id"]))
         st.session_state[key] = next_id_for_session(df, int(row["id"]), recent_key)
         st.session_state[reveal_key] = False
@@ -1212,7 +1310,7 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     if submitted:
         correct = normalize_sentence_answer(answer) == normalize_sentence_answer(expected_answer) if mode == "listening" else norm(answer) == norm(expected_answer)
         if is_first_quiz_attempt(st.session_state.get(result_key), int(row["id"])):
-            df = update_stats(df, int(row["id"]), correct)
+            df = update_stats(df, int(row["id"]), correct, mode)
         st.session_state[result_key] = {"id": int(row["id"]), "correct": correct, "expected": expected_answer, "answer": answer}
         st.rerun()
     return df

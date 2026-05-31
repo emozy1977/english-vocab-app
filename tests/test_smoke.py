@@ -212,6 +212,28 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(stats["streak"], 3)
         self.assertAlmostEqual(stats["accuracy"], 5 / 8)
 
+    def test_dashboard_stats_uses_study_events_for_today_count(self) -> None:
+        df = pd.DataFrame(
+            [
+                [1, "alpha", "", "other", "A", "", "", "[]", "Test", "3", False, 1, 0, "2026-06-01"],
+                [2, "beta", "", "other", "B", "", "", "[]", "Test", "3", False, 0, 1, "2026-06-01"],
+            ],
+            columns=app.COLUMNS,
+        )
+        events = pd.DataFrame(
+            [
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T08:00:00+09:00"},
+                {"word_id": 2, "word": "beta", "mode": "fill", "correct": False, "studied_on": "2026-05-31", "studied_at": "2026-05-31T23:00:00+09:00"},
+            ]
+        )
+
+        stats = app.dashboard_stats(df, events=events, today_value="2026-06-01", daily_goal=5)
+
+        self.assertEqual(stats["today_count"], 1)
+        self.assertEqual(stats["today_correct"], 1)
+        self.assertEqual(stats["today_wrong"], 0)
+        self.assertTrue(stats["event_log_available"])
+
     def test_consecutive_learning_days_keeps_yesterday_streak_visible(self) -> None:
         streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
 
@@ -369,11 +391,24 @@ class AppSmokeTests(unittest.TestCase):
             patch.object(app, "supabase_enabled", return_value=False),
             patch.object(app, "save_words", side_effect=lambda frame: saved_frames.append(frame.copy())),
             patch.object(app, "set_words", side_effect=lambda frame: frame),
+            patch.object(app, "record_study_event", return_value=True),
         ):
-            updated = app.update_stats(df, 1, True)
+            updated = app.update_stats(df, 1, True, "written")
 
         self.assertEqual(int(updated.loc[0, "correct_count"]), 1)
         self.assertEqual(int(saved_frames[0].loc[0, "correct_count"]), 1)
+
+    def test_study_event_from_row_records_japan_date_and_mode(self) -> None:
+        row = pd.Series({"id": 7, "word": "implement"})
+
+        with patch.object(app, "today", return_value="2026-06-01"):
+            event = app.study_event_from_row(row, "listening", False)
+
+        self.assertEqual(event["word_id"], 7)
+        self.assertEqual(event["word"], "implement")
+        self.assertEqual(event["mode"], "listening")
+        self.assertFalse(event["correct"])
+        self.assertEqual(event["studied_on"], "2026-06-01")
 
     def test_update_low_frequency_saves_local_dataframe(self) -> None:
         df = app.normalize_df(
