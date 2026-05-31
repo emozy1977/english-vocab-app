@@ -6,6 +6,7 @@ import json
 import os
 import re
 from datetime import date
+from datetime import timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 
@@ -26,6 +27,7 @@ DEFAULT_TTS_VOICE = "nova"
 LOW_FREQUENCY_GAP = 20
 CLOZE_EXAMPLE_COUNT = 5
 AUDIO_CACHE_DIR = Path(__file__).with_name(".audio_cache")
+DEFAULT_DAILY_GOAL = 5
 SESSION_WORDS_KEY = "words_df"
 PARTS_OF_SPEECH = ["noun", "verb", "adjective", "adverb", "phrase", "other"]
 PARTS_OF_SPEECH_SET = set(PARTS_OF_SPEECH)
@@ -540,6 +542,63 @@ def with_scores(df: pd.DataFrame) -> pd.DataFrame:
     return work
 
 
+def studied_date_strings(df: pd.DataFrame) -> set[str]:
+    dates: set[str] = set()
+    for value in df.get("last_studied", pd.Series(dtype=str)).astype(str):
+        text = value.strip()
+        if not text:
+            continue
+        try:
+            dates.add(date.fromisoformat(text[:10]).isoformat())
+        except ValueError:
+            continue
+    return dates
+
+
+def consecutive_learning_days(studied_dates: set[str], today_value: str | None = None) -> int:
+    if not studied_dates:
+        return 0
+    current = date.fromisoformat(today_value or today())
+    if current.isoformat() not in studied_dates:
+        yesterday = current - timedelta(days=1)
+        if yesterday.isoformat() not in studied_dates:
+            return 0
+        current = yesterday
+    streak = 0
+    while current.isoformat() in studied_dates:
+        streak += 1
+        current -= timedelta(days=1)
+    return streak
+
+
+def dashboard_stats(df: pd.DataFrame, today_value: str | None = None, daily_goal: int = DEFAULT_DAILY_GOAL) -> dict[str, int | float]:
+    work = with_scores(normalize_df(df))
+    today_text = today_value or today()
+    total_words = len(work)
+    total_correct = int(work["_correct"].sum()) if not work.empty else 0
+    total_wrong = int(work["_wrong"].sum()) if not work.empty else 0
+    total_answers = total_correct + total_wrong
+    attempted = (work["_correct"] + work["_wrong"]) > 0 if not work.empty else pd.Series(dtype=bool)
+    today_count = int((work["last_studied"].astype(str).str[:10] == today_text).sum()) if not work.empty else 0
+    weak_count = int((work["weakness_score"] > 0).sum()) if not work.empty else 0
+    new_count = int((~attempted).sum()) if not work.empty else 0
+    mastered_count = int(((work["_correct"] >= 3) & (work["weakness_score"] <= 0)).sum()) if not work.empty else 0
+    goal = max(int(daily_goal), 1)
+    return {
+        "total_words": total_words,
+        "today_count": today_count,
+        "daily_goal": goal,
+        "goal_percent": min(today_count / goal, 1.0),
+        "accuracy": total_correct / total_answers if total_answers else 0.0,
+        "total_correct": total_correct,
+        "total_wrong": total_wrong,
+        "weak_count": weak_count,
+        "new_count": new_count,
+        "mastered_count": mastered_count,
+        "streak": consecutive_learning_days(studied_date_strings(work), today_text),
+    }
+
+
 def priority(df: pd.DataFrame) -> pd.DataFrame:
     work = with_scores(df)
     work["_last"] = pd.to_datetime(work["last_studied"], errors="coerce").fillna(pd.Timestamp("1970-01-01"))
@@ -891,6 +950,63 @@ def register_screen(df: pd.DataFrame) -> pd.DataFrame:
                 st.success("新しい単語を登録しました。" if created else "既存の単語を更新しました。")
     with st.expander("登録済み単語"):
         st.dataframe(df[["word", "part_of_speech", "meaning_ja", "category", "difficulty", "low_frequency", "correct_count", "wrong_count", "last_studied"]].rename(columns={"word": "英単語", "part_of_speech": "品詞", "meaning_ja": "意味", "category": "カテゴリ", "difficulty": "難易度", "low_frequency": "頻度低", "correct_count": "正解", "wrong_count": "不正解", "last_studied": "最終学習日"}), use_container_width=True, hide_index=True)
+    return df
+
+
+def dashboard_metric(label: str, value: str, note: str = "") -> str:
+    note_html = f'<div class="dashboard-note">{esc(note)}</div>' if note else ""
+    return f"""
+      <div class="dashboard-card">
+        <div class="dashboard-label">{esc(label)}</div>
+        <div class="dashboard-value">{esc(value)}</div>
+        {note_html}
+      </div>
+    """
+
+
+def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
+    stats = dashboard_stats(df)
+    accuracy_percent = round(float(stats["accuracy"]) * 100)
+    goal_percent = round(float(stats["goal_percent"]) * 100)
+    st.subheader("ダッシュボード")
+    st.caption("学習の進み具合を、今ある学習履歴からまとめます。連続学習日数は最終学習日の記録から計算しています。")
+    st.markdown(
+        f"""
+        <div class="dashboard-grid">
+          {dashboard_metric("総単語数", f"{stats['total_words']}語", "登録済み")}
+          {dashboard_metric("今日の学習", f"{stats['today_count']}語", f"目標 {stats['daily_goal']}語")}
+          {dashboard_metric("正解率", f"{accuracy_percent}%", f"正解 {stats['total_correct']} / 不正解 {stats['total_wrong']}")}
+          {dashboard_metric("連続学習", f"{stats['streak']}日", "記録上の連続日数")}
+          {dashboard_metric("苦手", f"{stats['weak_count']}語", "不正解 - 正解 > 0")}
+          {dashboard_metric("定着", f"{stats['mastered_count']}語", "正解3回以上")}
+        </div>
+        <div class="goal-panel">
+          <div class="goal-row">
+            <span>今日の目標</span>
+            <strong>{stats['today_count']} / {stats['daily_goal']}語</strong>
+          </div>
+          <div class="progress-track"><div class="progress-fill" style="width:{goal_percent}%"></div></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    weak_words = priority(df).head(5)
+    if not weak_words.empty:
+        st.markdown("#### 次に減らしたい苦手")
+        st.dataframe(
+            weak_words[["word", "meaning_ja", "weakness_score", "correct_count", "wrong_count", "last_studied"]].rename(
+                columns={
+                    "word": "英単語",
+                    "meaning_ja": "意味",
+                    "weakness_score": "苦手数",
+                    "correct_count": "正解",
+                    "wrong_count": "不正解",
+                    "last_studied": "最終学習日",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
     return df
 
 
@@ -1422,6 +1538,15 @@ def css() -> None:
       .meaning { color:#182033; font-size:1.15rem; font-weight:700; margin-top:1rem; overflow-wrap:anywhere; }
       .example-en { background:#f7f9fc; border-left:4px solid #2f6fed; color:#1f2937; margin-top:1rem; padding:.8rem; line-height:1.55; overflow-wrap:anywhere; }
       .answer-placeholder { background:#f7f9fc; border:1px dashed #cbd5e1; border-radius:8px; color:#687385; font-size:.95rem; margin-top:.85rem; padding:.75rem; text-align:center; }
+      .dashboard-grid { display:grid; gap:.65rem; grid-template-columns:repeat(2,minmax(0,1fr)); margin:.75rem 0 1rem; }
+      .dashboard-card { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:.9rem; box-shadow:0 8px 24px rgba(24,39,75,.06); min-height:96px; }
+      .dashboard-label { color:#596579; font-size:.82rem; font-weight:800; }
+      .dashboard-value { color:#111827; font-size:1.65rem; font-weight:900; line-height:1.1; margin-top:.35rem; }
+      .dashboard-note { color:#687385; font-size:.78rem; line-height:1.35; margin-top:.35rem; }
+      .goal-panel { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:1rem; margin:.35rem 0 1rem; }
+      .goal-row { align-items:center; color:#172033; display:flex; justify-content:space-between; gap:.75rem; font-size:.95rem; }
+      .progress-track { background:#e8edf5; border-radius:999px; height:12px; overflow:hidden; margin-top:.75rem; }
+      .progress-fill { background:#2f6fed; border-radius:999px; height:100%; }
       .answer-review { background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin:.8rem 0 1rem; padding:.8rem; }
       .answer-review-label { color:#9a3412; font-size:.82rem; font-weight:800; margin-bottom:.35rem; }
       .answer-review-text { color:#111827; font-size:1.15rem; font-weight:800; letter-spacing:0; overflow-wrap:anywhere; }
@@ -1436,6 +1561,7 @@ def css() -> None:
       div.stButton > button, div[data-testid="stFormSubmitButton"] button { background:#fff!important; border:1px solid #cbd5e1!important; border-radius:8px; color:#172033!important; min-height:46px; font-weight:800; width:100%; }
       button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] { background:#2f6fed!important; border-color:#2f6fed!important; color:#fff!important; }
       button * { color:inherit!important; }
+      @media (max-width: 430px) { .dashboard-grid { grid-template-columns:1fr; } }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1447,11 +1573,13 @@ def main() -> None:
     st.title("英単語帳")
     df = words_for_session()
 
-    menu = st.sidebar.radio("モード", ["学習カード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
+    menu = st.sidebar.radio("モード", ["学習カード", "ダッシュボード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
     st.sidebar.write(f"単語数: {len(df)}")
 
     if menu == "学習カード":
         df = study_screen(df)
+    elif menu == "ダッシュボード":
+        df = dashboard_screen(df)
     elif menu == "筆記問題":
         df = quiz_screen(df, "written")
     elif menu == "穴埋め問題":

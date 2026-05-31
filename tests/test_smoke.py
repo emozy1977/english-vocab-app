@@ -188,6 +188,32 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(ordered.iloc[0]["word"], "weak")
         self.assertEqual(ordered.iloc[0]["weakness_score"], 4)
 
+    def test_dashboard_stats_summarizes_learning_progress(self) -> None:
+        df = pd.DataFrame(
+            [
+                [1, "mastered", "", "other", "定着", "", "", "[]", "Test", "3", False, 3, 0, "2026-06-01"],
+                [2, "weak", "", "other", "苦手", "", "", "[]", "Test", "3", False, 1, 3, "2026-05-31"],
+                [3, "known", "", "other", "既知", "", "", "[]", "Test", "3", False, 1, 0, "2026-05-30"],
+                [4, "new", "", "other", "新規", "", "", "[]", "Test", "3", False, 0, 0, ""],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        stats = app.dashboard_stats(df, today_value="2026-06-01", daily_goal=5)
+
+        self.assertEqual(stats["total_words"], 4)
+        self.assertEqual(stats["today_count"], 1)
+        self.assertEqual(stats["weak_count"], 1)
+        self.assertEqual(stats["new_count"], 1)
+        self.assertEqual(stats["mastered_count"], 1)
+        self.assertEqual(stats["streak"], 3)
+        self.assertAlmostEqual(stats["accuracy"], 5 / 8)
+
+    def test_consecutive_learning_days_keeps_yesterday_streak_visible(self) -> None:
+        streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
+
+        self.assertEqual(streak, 2)
+
     def test_mixed_ids_includes_difficult_new_and_regular_words(self) -> None:
         df = pd.DataFrame(
             [
