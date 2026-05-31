@@ -32,7 +32,7 @@ DEFAULT_TIMEZONE = "Asia/Tokyo"
 LOW_FREQUENCY_GAP = 20
 CLOZE_EXAMPLE_COUNT = 5
 AUDIO_CACHE_DIR = Path(__file__).with_name(".audio_cache")
-DEFAULT_DAILY_GOAL = 5
+DEFAULT_DAILY_GOAL = 50
 SESSION_WORDS_KEY = "words_df"
 STUDY_EVENT_COLUMNS = ["word_id", "word", "mode", "correct", "studied_on", "studied_at"]
 MODE_LABELS = {"study": "学習カード", "written": "筆記", "fill": "穴埋め", "listening": "聞き取り"}
@@ -1076,7 +1076,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
     stats = dashboard_stats(df, events)
     accuracy_percent = round(float(stats["accuracy"]) * 100)
     goal_percent = round(float(stats["goal_percent"]) * 100)
-    today_note = f"正解 {stats['today_correct']} / 不正解 {stats['today_wrong']}" if stats["event_log_available"] else f"目標 {stats['daily_goal']}語"
+    today_note = f"正解 {stats['today_correct']} / 不正解 {stats['today_wrong']}" if stats["event_log_available"] else f"目標 {stats['daily_goal']}回"
     st.subheader("ダッシュボード")
     st.caption(f"学習の進み具合を、日本時間（{today()}）で集計します。学習ログがある場合、今日の学習は記録された解答数です。")
     st.markdown(

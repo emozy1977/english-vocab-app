@@ -212,6 +212,11 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(stats["streak"], 3)
         self.assertAlmostEqual(stats["accuracy"], 5 / 8)
 
+    def test_dashboard_default_daily_goal_is_fifty_answers(self) -> None:
+        stats = app.dashboard_stats(pd.DataFrame(app.SAMPLE_WORDS, columns=app.COLUMNS), today_value="2026-06-01")
+
+        self.assertEqual(stats["daily_goal"], 50)
+
     def test_dashboard_stats_uses_study_events_for_today_count(self) -> None:
         df = pd.DataFrame(
             [
