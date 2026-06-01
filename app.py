@@ -354,6 +354,70 @@ def read_tts_cache(path: str) -> bytes | None:
     return local_path.read_bytes() if local_path.exists() else None
 
 
+def expected_tts_cache_paths(df: pd.DataFrame, model: str, voice: str) -> pd.DataFrame:
+    rows: list[dict[str, object]] = []
+    seen: set[str] = set()
+    for row in normalize_df(df).itertuples():
+        for example in cloze_examples_for_row(row._asdict()):
+            text = str(example.get("en", "")).strip()
+            if not text:
+                continue
+            path = tts_cache_path(text, model, voice)
+            if path in seen:
+                continue
+            seen.add(path)
+            rows.append(
+                {
+                    "word": row.word,
+                    "text": text,
+                    "path": path,
+                }
+            )
+    return pd.DataFrame(rows, columns=["word", "text", "path"])
+
+
+def list_local_tts_cache_paths() -> dict[str, int]:
+    if not AUDIO_CACHE_DIR.exists():
+        return {}
+    paths: dict[str, int] = {}
+    for path in AUDIO_CACHE_DIR.rglob("*.mp3"):
+        if path.is_file():
+            paths[path.relative_to(AUDIO_CACHE_DIR).as_posix()] = path.stat().st_size
+    return paths
+
+
+def list_supabase_tts_cache_paths(model: str, voice: str) -> dict[str, int]:
+    safe_model = re.sub(r"[^a-zA-Z0-9_.-]", "_", model)
+    safe_voice = re.sub(r"[^a-zA-Z0-9_.-]", "_", voice)
+    prefix = f"{safe_model}/{safe_voice}"
+    try:
+        items = supabase_client().storage.from_(SUPABASE_TTS_BUCKET).list(prefix, {"limit": 1000})
+    except Exception:
+        return {}
+    paths: dict[str, int] = {}
+    for item in items or []:
+        name = str(item.get("name", ""))
+        if not name.endswith(".mp3"):
+            continue
+        metadata = item.get("metadata") or {}
+        size = int(metadata.get("size") or 0)
+        paths[f"{prefix}/{name}"] = size
+    return paths
+
+
+def tts_cache_inventory(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
+    model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
+    voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
+    expected = expected_tts_cache_paths(df, model, voice)
+    cached_paths = list_supabase_tts_cache_paths(model, voice) if supabase_enabled() else list_local_tts_cache_paths()
+    if expected.empty:
+        return expected.assign(cached=[], size=[]), 0, len(cached_paths)
+    inventory = expected.copy()
+    inventory["cached"] = inventory["path"].isin(cached_paths)
+    inventory["size"] = inventory["path"].map(cached_paths).fillna(0).astype(int)
+    return inventory, int(inventory["cached"].sum()), len(cached_paths)
+
+
 def write_tts_cache(path: str, audio: bytes) -> None:
     if supabase_enabled():
         try:
@@ -1349,6 +1413,44 @@ def review_screen(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def render_tts_cache_status(df: pd.DataFrame) -> None:
+    storage_label = f"Supabase Storage: {SUPABASE_TTS_BUCKET}" if supabase_enabled() else f"ローカル: {AUDIO_CACHE_DIR}"
+    model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
+    voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
+    with st.expander("高品質音声キャッシュ"):
+        st.write("聞き取り問題で使う高品質音声が保存済みか確認できます。保存済みの英文は、次回以降OpenAI APIを呼ばずに再利用します。")
+        st.caption(f"保存先: {storage_label} / モデル: {model} / Voice: {voice}")
+        inventory, cached_count, stored_file_count = tts_cache_inventory(df)
+        expected_count = len(inventory)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("保存済み", f"{cached_count}件")
+        c2.metric("対象英文", f"{expected_count}件")
+        c3.metric("保存ファイル", f"{stored_file_count}件")
+        if inventory.empty:
+            st.info("穴埋め例文がまだないため、音声キャッシュの対象英文がありません。")
+            return
+        only_cached = st.checkbox("保存済みだけ表示", value=True)
+        shown = inventory[inventory["cached"]] if only_cached else inventory
+        if shown.empty:
+            st.info("現在の穴埋め例文に対応する保存済み音声はまだありません。聞き取り問題で高品質音声を準備すると保存されます。")
+            return
+        table = shown.copy()
+        table["status"] = table["cached"].map({True: "保存済み", False: "未生成"})
+        table["size_kb"] = (table["size"] / 1024).round(1)
+        st.dataframe(
+            table[["word", "text", "status", "size_kb"]].rename(
+                columns={
+                    "word": "単語",
+                    "text": "英文",
+                    "status": "状態",
+                    "size_kb": "サイズKB",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+
 def last_ai_date() -> str:
     if supabase_enabled():
         rows = supabase_client().table(SUPABASE_SETTINGS_TABLE).select("value").eq("key", "last_ai_words_date").limit(1).execute().data or []
@@ -1625,6 +1727,7 @@ def ai_screen(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 st.success(f"{changed}語の穴埋め例文を更新しました。")
                 st.rerun()
+    render_tts_cache_status(df)
     missing_pos = int((df["part_of_speech"].apply(normalize_pos) == "other").sum())
     with st.expander("既存単語の品詞を補完"):
         st.write(f"品詞が未設定の単語: {missing_pos}語")

@@ -177,6 +177,40 @@ class AppSmokeTests(unittest.TestCase):
         self.assertTrue(path.endswith(".mp3"))
         self.assertNotIn("The team", path)
 
+    def test_expected_tts_cache_paths_lists_unique_cloze_sentences(self) -> None:
+        df = pd.DataFrame(
+            [
+                [
+                    1,
+                    "manage",
+                    "",
+                    "verb",
+                    "管理する",
+                    "",
+                    "",
+                    app.encode_cloze_examples(
+                        [
+                            {"en": "She manages the project.", "ja": "彼女はプロジェクトを管理します。"},
+                            {"en": "She manages the project.", "ja": "重複"},
+                            {"en": "We manage the release plan.", "ja": "私たちはリリース計画を管理します。"},
+                        ]
+                    ),
+                    "Business",
+                    "3",
+                    False,
+                    0,
+                    0,
+                    "",
+                ],
+            ],
+            columns=app.COLUMNS,
+        )
+
+        paths = app.expected_tts_cache_paths(app.normalize_df(df), "gpt-4o-mini-tts", "nova")
+
+        self.assertEqual(paths["text"].tolist(), ["She manages the project.", "We manage the release plan."])
+        self.assertTrue(paths["path"].str.endswith(".mp3").all())
+
     def test_priority_uses_wrong_minus_correct_as_weakness_score(self) -> None:
         df = pd.DataFrame(
             [
