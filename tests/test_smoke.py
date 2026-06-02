@@ -315,6 +315,25 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(ranking["wrong_count"].tolist(), [2, 1])
         self.assertEqual(ranking["last_wrong_on"].tolist(), ["2026-06-01", "2026-06-01"])
 
+    def test_mode_accuracy_summary_groups_answers_by_mode(self) -> None:
+        events = pd.DataFrame(
+            [
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T08:00:00+09:00"},
+                {"word_id": 2, "word": "beta", "mode": "written", "correct": False, "studied_on": "2026-06-01", "studied_at": "2026-06-01T09:00:00+09:00"},
+                {"word_id": 3, "word": "gamma", "mode": "listening", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T10:00:00+09:00"},
+                {"word_id": 4, "word": "delta", "mode": "listening", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T11:00:00+09:00"},
+            ]
+        )
+
+        summary = app.mode_accuracy_summary(events)
+
+        self.assertEqual(summary["mode"].tolist(), ["listening", "written"])
+        self.assertEqual(summary["mode_label"].tolist(), ["聞き取り", "筆記"])
+        self.assertEqual(summary["answers"].tolist(), [2, 2])
+        self.assertEqual(summary["correct"].tolist(), [2, 1])
+        self.assertEqual(summary["wrong"].tolist(), [0, 1])
+        self.assertEqual(summary["accuracy_percent"].tolist(), [100, 50])
+
     def test_consecutive_learning_days_keeps_yesterday_streak_visible(self) -> None:
         streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
 

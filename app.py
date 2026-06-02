@@ -819,6 +819,22 @@ def recent_wrong_word_ranking(events: pd.DataFrame, today_value: str | None = No
     return ranking[["word", "wrong_count", "last_wrong_on"]]
 
 
+def mode_accuracy_summary(events: pd.DataFrame) -> pd.DataFrame:
+    event_log = normalize_study_events(events)
+    if event_log.empty:
+        return pd.DataFrame(columns=["mode", "mode_label", "answers", "correct", "wrong", "accuracy_percent"])
+    summary = (
+        event_log.groupby("mode", as_index=False)
+        .agg(answers=("correct", "size"), correct=("correct", "sum"))
+        .sort_values(["answers", "mode"], ascending=[False, True])
+    )
+    summary["correct"] = summary["correct"].astype(int)
+    summary["wrong"] = summary["answers"].astype(int) - summary["correct"]
+    summary["accuracy_percent"] = (summary["correct"] / summary["answers"] * 100).round().astype(int)
+    summary["mode_label"] = summary["mode"].map(MODE_LABELS).fillna(summary["mode"])
+    return summary[["mode", "mode_label", "answers", "correct", "wrong", "accuracy_percent"]]
+
+
 def daily_goal_achieved(stats: dict[str, object]) -> bool:
     return int(stats.get("today_count", 0)) >= int(stats.get("daily_goal", DEFAULT_DAILY_GOAL))
 
@@ -1249,6 +1265,22 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         total_recent = int(daily_counts["学習回数"].sum())
         active_days = int((daily_counts["学習回数"] > 0).sum())
         st.caption(f"直近14日: 合計 {total_recent}回 / 学習した日 {active_days}日")
+        mode_summary = mode_accuracy_summary(events)
+        if not mode_summary.empty:
+            st.markdown("#### 問題形式ごとの正解率")
+            st.dataframe(
+                mode_summary[["mode_label", "accuracy_percent", "answers", "correct", "wrong"]].rename(
+                    columns={
+                        "mode_label": "形式",
+                        "accuracy_percent": "正解率%",
+                        "answers": "回答数",
+                        "correct": "正解",
+                        "wrong": "不正解",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
         wrong_ranking = recent_wrong_word_ranking(events)
         st.markdown("#### 最近よく間違える単語")
         if wrong_ranking.empty:
