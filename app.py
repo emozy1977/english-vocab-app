@@ -764,6 +764,29 @@ def daily_event_counts(events: pd.DataFrame, today_value: str | None = None, day
     return pd.DataFrame({"日付": labels, "学習回数": [counts[label] for label in labels]})
 
 
+def daily_goal_achieved(stats: dict[str, int | float | bool]) -> bool:
+    return int(stats.get("today_count", 0)) >= int(stats.get("daily_goal", DEFAULT_DAILY_GOAL))
+
+
+def daily_goal_message(stats: dict[str, int | float | bool]) -> str:
+    return f"今日の目標達成: {int(stats['today_count'])} / {int(stats['daily_goal'])}回"
+
+
+def render_daily_goal_banner(df: pd.DataFrame) -> None:
+    stats = dashboard_stats(df, load_study_events())
+    if not daily_goal_achieved(stats):
+        return
+    st.markdown(
+        f"""
+        <div class="goal-achieved-banner">
+          <div class="goal-achieved-title">{esc(daily_goal_message(stats))}</div>
+          <div class="goal-achieved-note">今日の学習目標を達成しました。続ける場合も、この記録は残ります。</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def priority(df: pd.DataFrame) -> pd.DataFrame:
     work = with_scores(df)
     work["_last"] = pd.to_datetime(work["last_studied"], errors="coerce").fillna(pd.Timestamp("1970-01-01"))
@@ -1782,6 +1805,9 @@ def css() -> None:
       .dashboard-note { color:#687385; font-size:.78rem; line-height:1.35; margin-top:.35rem; }
       .goal-panel { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:1rem; margin:.35rem 0 1rem; }
       .goal-row { align-items:center; color:#172033; display:flex; justify-content:space-between; gap:.75rem; font-size:.95rem; }
+      .goal-achieved-banner { background:#ecfdf5; border:1px solid #bbf7d0; border-radius:8px; box-shadow:0 8px 24px rgba(22,101,52,.08); margin:.75rem 0 1rem; padding:.9rem 1rem; }
+      .goal-achieved-title { color:#166534; font-size:1.05rem; font-weight:900; line-height:1.35; }
+      .goal-achieved-note { color:#24533b; font-size:.9rem; line-height:1.45; margin-top:.25rem; }
       .progress-track { background:#e8edf5; border-radius:999px; height:12px; overflow:hidden; margin-top:.75rem; }
       .progress-fill { background:#2f6fed; border-radius:999px; height:100%; }
       .answer-review { background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin:.8rem 0 1rem; padding:.8rem; }
@@ -1812,6 +1838,7 @@ def main() -> None:
 
     menu = st.sidebar.radio("モード", ["ダッシュボード", "学習カード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
     st.sidebar.write(f"単語数: {len(df)}")
+    render_daily_goal_banner(df)
 
     if menu == "ダッシュボード":
         df = dashboard_screen(df)

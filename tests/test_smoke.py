@@ -251,6 +251,15 @@ class AppSmokeTests(unittest.TestCase):
 
         self.assertEqual(stats["daily_goal"], 50)
 
+    def test_daily_goal_achieved_when_today_count_reaches_goal(self) -> None:
+        stats = {"today_count": 50, "daily_goal": 50}
+
+        self.assertTrue(app.daily_goal_achieved(stats))
+        self.assertEqual(app.daily_goal_message(stats), "今日の目標達成: 50 / 50回")
+
+    def test_daily_goal_not_achieved_before_goal(self) -> None:
+        self.assertFalse(app.daily_goal_achieved({"today_count": 49, "daily_goal": 50}))
+
     def test_dashboard_stats_uses_study_events_for_today_count(self) -> None:
         df = pd.DataFrame(
             [
