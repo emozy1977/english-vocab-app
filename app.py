@@ -1905,9 +1905,9 @@ def css() -> None:
       .stApp { background:#f5f7fb; color:#172033; }
       .block-container { max-width:720px; padding:1rem .85rem 5rem; }
       h1 { font-size:1.65rem!important; line-height:1.2!important; }
-      div[data-testid="stRadio"] > div { display:flex; flex-wrap:wrap; gap:.35rem; }
-      div[data-testid="stRadio"] label { background:#fff; border:1px solid #dce3ee; border-radius:8px; color:#172033; padding:.35rem .6rem; min-height:42px; }
-      div[data-testid="stRadio"] label * { color:#172033!important; }
+      div[data-testid="stSidebar"] { background:#fff; border-right:1px solid #e1e7f0; }
+      div[data-testid="stSidebar"] div[data-testid="stRadio"] label { border-radius:8px; min-height:42px; padding:.3rem .45rem; }
+      div[data-testid="stSidebar"] div[data-testid="stRadio"] label * { color:#172033!important; font-weight:800!important; }
       .word-card,.quiz-card { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:1rem; box-shadow:0 8px 24px rgba(24,39,75,.08); margin:.4rem 0 1rem; }
       .pill { background:#eef6f1; color:#24533b; border:1px solid #d7ebdf; border-radius:999px; display:inline-flex; align-items:center; min-height:28px; padding:0 .65rem; font-size:.8rem; font-weight:700; margin-right:.4rem; }
       .word-title { color:#111827; font-size:2.2rem; font-weight:800; line-height:1.05; overflow-wrap:anywhere; margin-top:.8rem; }
@@ -1944,7 +1944,9 @@ def css() -> None:
       div.stButton > button, div[data-testid="stFormSubmitButton"] button { background:#fff!important; border:1px solid #cbd5e1!important; border-radius:8px; color:#172033!important; min-height:46px; font-weight:800; width:100%; }
       button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] { background:#2f6fed!important; border-color:#2f6fed!important; color:#fff!important; }
       button * { color:inherit!important; }
-      @media (max-width: 430px) { .dashboard-grid { grid-template-columns:1fr; } }
+      @media (max-width: 430px) {
+        .dashboard-grid { grid-template-columns:1fr; }
+      }
     </style>
     """, unsafe_allow_html=True)
 
