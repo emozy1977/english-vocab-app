@@ -843,15 +843,29 @@ def daily_goal_message(stats: dict[str, object]) -> str:
     return f"今日の目標達成: {int(stats['today_count'])} / {int(stats['daily_goal'])}回"
 
 
-def render_daily_goal_banner(df: pd.DataFrame) -> None:
+def daily_goal_remaining(stats: dict[str, object]) -> int:
+    return max(int(stats.get("daily_goal", DEFAULT_DAILY_GOAL)) - int(stats.get("today_count", 0)), 0)
+
+
+def daily_goal_remaining_message(stats: dict[str, object]) -> str:
+    return f"今日の目標まであと {daily_goal_remaining(stats)} 回"
+
+
+def render_daily_goal_status(df: pd.DataFrame) -> None:
     stats = dashboard_stats(df, load_study_events())
-    if not daily_goal_achieved(stats):
-        return
+    if daily_goal_achieved(stats):
+        title = daily_goal_message(stats)
+        note = "今日の学習目標を達成しました。続ける場合も、この記録は残ります。"
+        class_name = "goal-achieved-banner"
+    else:
+        title = daily_goal_remaining_message(stats)
+        note = f"現在 {int(stats['today_count'])} / {int(stats['daily_goal'])}回。少しずつ積み上げましょう。"
+        class_name = "goal-remaining-banner"
     st.markdown(
         f"""
-        <div class="goal-achieved-banner">
-          <div class="goal-achieved-title">{esc(daily_goal_message(stats))}</div>
-          <div class="goal-achieved-note">今日の学習目標を達成しました。続ける場合も、この記録は残ります。</div>
+        <div class="{class_name}">
+          <div class="goal-status-title">{esc(title)}</div>
+          <div class="goal-status-note">{esc(note)}</div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1909,8 +1923,11 @@ def css() -> None:
       .goal-panel { background:#fff; border:1px solid #e1e7f0; border-radius:8px; padding:1rem; margin:.35rem 0 1rem; }
       .goal-row { align-items:center; color:#172033; display:flex; justify-content:space-between; gap:.75rem; font-size:.95rem; }
       .goal-achieved-banner { background:#ecfdf5; border:1px solid #bbf7d0; border-radius:8px; box-shadow:0 8px 24px rgba(22,101,52,.08); margin:.75rem 0 1rem; padding:.9rem 1rem; }
-      .goal-achieved-title { color:#166534; font-size:1.05rem; font-weight:900; line-height:1.35; }
-      .goal-achieved-note { color:#24533b; font-size:.9rem; line-height:1.45; margin-top:.25rem; }
+      .goal-remaining-banner { background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; box-shadow:0 8px 24px rgba(37,99,235,.07); margin:.75rem 0 1rem; padding:.9rem 1rem; }
+      .goal-status-title { color:#1e3a8a; font-size:1.05rem; font-weight:900; line-height:1.35; }
+      .goal-status-note { color:#475569; font-size:.9rem; line-height:1.45; margin-top:.25rem; }
+      .goal-achieved-banner .goal-status-title { color:#166534; }
+      .goal-achieved-banner .goal-status-note { color:#24533b; }
       .progress-track { background:#e8edf5; border-radius:999px; height:12px; overflow:hidden; margin-top:.75rem; }
       .progress-fill { background:#2f6fed; border-radius:999px; height:100%; }
       .answer-review { background:#fff7ed; border:1px solid #fed7aa; border-radius:8px; margin:.8rem 0 1rem; padding:.8rem; }
@@ -1941,7 +1958,7 @@ def main() -> None:
 
     menu = st.sidebar.radio("モード", ["ダッシュボード", "学習カード", "筆記問題", "穴埋め問題", "聞き取り問題", "復習", "単語登録", "AI追加"], index=0)
     st.sidebar.write(f"単語数: {len(df)}")
-    render_daily_goal_banner(df)
+    render_daily_goal_status(df)
 
     if menu == "ダッシュボード":
         df = dashboard_screen(df)

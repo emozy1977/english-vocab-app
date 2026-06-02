@@ -262,6 +262,15 @@ class AppSmokeTests(unittest.TestCase):
     def test_daily_goal_not_achieved_before_goal(self) -> None:
         self.assertFalse(app.daily_goal_achieved({"today_count": 49, "daily_goal": 50}))
 
+    def test_daily_goal_remaining_message(self) -> None:
+        stats = {"today_count": 38, "daily_goal": 50}
+
+        self.assertEqual(app.daily_goal_remaining(stats), 12)
+        self.assertEqual(app.daily_goal_remaining_message(stats), "今日の目標まであと 12 回")
+
+    def test_daily_goal_remaining_never_goes_below_zero(self) -> None:
+        self.assertEqual(app.daily_goal_remaining({"today_count": 55, "daily_goal": 50}), 0)
+
     def test_dashboard_stats_uses_study_events_for_today_count(self) -> None:
         df = pd.DataFrame(
             [
