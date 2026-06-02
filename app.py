@@ -764,6 +764,28 @@ def daily_event_counts(events: pd.DataFrame, today_value: str | None = None, day
     return pd.DataFrame({"日付": labels, "学習回数": [counts[label] for label in labels]})
 
 
+def recent_wrong_word_ranking(events: pd.DataFrame, today_value: str | None = None, days: int = 14, limit: int = 5) -> pd.DataFrame:
+    event_log = normalize_study_events(events)
+    if event_log.empty:
+        return pd.DataFrame(columns=["word", "wrong_count", "last_wrong_on"])
+    today_date = date.fromisoformat(today_value or today())
+    start_date = today_date - timedelta(days=max(int(days), 1) - 1)
+    wrong_events = event_log[
+        (~event_log["correct"])
+        & (pd.to_datetime(event_log["studied_on"], errors="coerce").dt.date >= start_date)
+        & (pd.to_datetime(event_log["studied_on"], errors="coerce").dt.date <= today_date)
+    ].copy()
+    if wrong_events.empty:
+        return pd.DataFrame(columns=["word", "wrong_count", "last_wrong_on"])
+    ranking = (
+        wrong_events.groupby("word", as_index=False)
+        .agg(wrong_count=("correct", "size"), last_wrong_on=("studied_on", "max"))
+        .sort_values(["wrong_count", "last_wrong_on", "word"], ascending=[False, False, True])
+        .head(max(int(limit), 1))
+    )
+    return ranking[["word", "wrong_count", "last_wrong_on"]]
+
+
 def daily_goal_achieved(stats: dict[str, int | float | bool]) -> bool:
     return int(stats.get("today_count", 0)) >= int(stats.get("daily_goal", DEFAULT_DAILY_GOAL))
 
@@ -1194,6 +1216,22 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         total_recent = int(daily_counts["学習回数"].sum())
         active_days = int((daily_counts["学習回数"] > 0).sum())
         st.caption(f"直近14日: 合計 {total_recent}回 / 学習した日 {active_days}日")
+        wrong_ranking = recent_wrong_word_ranking(events)
+        st.markdown("#### 最近よく間違える単語")
+        if wrong_ranking.empty:
+            st.info("直近14日に不正解だった単語はありません。")
+        else:
+            st.dataframe(
+                wrong_ranking.rename(
+                    columns={
+                        "word": "英単語",
+                        "wrong_count": "不正解回数",
+                        "last_wrong_on": "最後に間違えた日",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
     weak_word_rows = weak_words(df).head(5)
     if not weak_word_rows.empty:
         st.markdown("#### 次に減らしたい苦手")
