@@ -797,7 +797,7 @@ def daily_event_counts(events: pd.DataFrame, today_value: str | None = None, day
     return pd.DataFrame({"日付": labels, "学習回数": [counts[label] for label in labels]})
 
 
-def recent_wrong_word_ranking(events: pd.DataFrame, today_value: str | None = None, days: int = 14, limit: int = 5) -> pd.DataFrame:
+def recent_wrong_word_ranking(events: pd.DataFrame, today_value: str | None = None, days: int = 3, limit: int = 5) -> pd.DataFrame:
     event_log = normalize_study_events(events)
     if event_log.empty:
         return pd.DataFrame(columns=["word", "wrong_count", "last_wrong_on"])
@@ -1298,7 +1298,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
         wrong_ranking = recent_wrong_word_ranking(events)
         st.markdown("#### 最近よく間違える単語")
         if wrong_ranking.empty:
-            st.info("直近14日に不正解だった単語はありません。")
+            st.info("直近3日に不正解だった単語はありません。")
         else:
             st.dataframe(
                 wrong_ranking.rename(

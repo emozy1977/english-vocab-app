@@ -310,7 +310,7 @@ class AppSmokeTests(unittest.TestCase):
     def test_recent_wrong_word_ranking_counts_recent_wrong_answers(self) -> None:
         events = pd.DataFrame(
             [
-                {"word_id": 1, "word": "alpha", "mode": "written", "correct": False, "studied_on": "2026-05-30", "studied_at": "2026-05-30T08:00:00+09:00"},
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": False, "studied_on": "2026-05-29", "studied_at": "2026-05-29T08:00:00+09:00"},
                 {"word_id": 1, "word": "alpha", "mode": "fill", "correct": False, "studied_on": "2026-06-01", "studied_at": "2026-06-01T08:00:00+09:00"},
                 {"word_id": 2, "word": "beta", "mode": "study", "correct": False, "studied_on": "2026-06-01", "studied_at": "2026-06-01T09:00:00+09:00"},
                 {"word_id": 2, "word": "beta", "mode": "written", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T10:00:00+09:00"},
@@ -318,10 +318,10 @@ class AppSmokeTests(unittest.TestCase):
             ]
         )
 
-        ranking = app.recent_wrong_word_ranking(events, today_value="2026-06-01", days=14)
+        ranking = app.recent_wrong_word_ranking(events, today_value="2026-06-01")
 
         self.assertEqual(ranking["word"].tolist(), ["alpha", "beta"])
-        self.assertEqual(ranking["wrong_count"].tolist(), [2, 1])
+        self.assertEqual(ranking["wrong_count"].tolist(), [1, 1])
         self.assertEqual(ranking["last_wrong_on"].tolist(), ["2026-06-01", "2026-06-01"])
 
     def test_mode_accuracy_summary_groups_answers_by_mode(self) -> None:
