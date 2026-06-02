@@ -244,6 +244,8 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(stats["new_count"], 1)
         self.assertEqual(stats["mastered_count"], 1)
         self.assertEqual(stats["streak"], 3)
+        self.assertEqual(stats["longest_streak"], 3)
+        self.assertEqual(stats["last_learning_date"], "2026-06-01")
         self.assertAlmostEqual(stats["accuracy"], 5 / 8)
 
     def test_dashboard_default_daily_goal_is_fifty_answers(self) -> None:
@@ -317,6 +319,29 @@ class AppSmokeTests(unittest.TestCase):
         streak = app.consecutive_learning_days({"2026-05-30", "2026-05-31"}, today_value="2026-06-01")
 
         self.assertEqual(streak, 2)
+
+    def test_longest_learning_streak_handles_gaps(self) -> None:
+        studied_dates = {"2026-05-28", "2026-05-30", "2026-05-31", "2026-06-01"}
+
+        self.assertEqual(app.longest_learning_streak(studied_dates), 3)
+        self.assertEqual(app.latest_learning_date(studied_dates), "2026-06-01")
+
+    def test_dashboard_stats_uses_event_log_for_precise_streak_details(self) -> None:
+        df = pd.DataFrame(app.SAMPLE_WORDS, columns=app.COLUMNS)
+        events = pd.DataFrame(
+            [
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": True, "studied_on": "2026-05-28", "studied_at": "2026-05-28T08:00:00+09:00"},
+                {"word_id": 1, "word": "alpha", "mode": "written", "correct": True, "studied_on": "2026-05-30", "studied_at": "2026-05-30T08:00:00+09:00"},
+                {"word_id": 2, "word": "beta", "mode": "fill", "correct": False, "studied_on": "2026-05-31", "studied_at": "2026-05-31T08:00:00+09:00"},
+                {"word_id": 3, "word": "gamma", "mode": "study", "correct": True, "studied_on": "2026-06-01", "studied_at": "2026-06-01T08:00:00+09:00"},
+            ]
+        )
+
+        stats = app.dashboard_stats(df, events=events, today_value="2026-06-01")
+
+        self.assertEqual(stats["streak"], 3)
+        self.assertEqual(stats["longest_streak"], 3)
+        self.assertEqual(stats["last_learning_date"], "2026-06-01")
 
     def test_weak_words_filters_only_positive_weakness_scores(self) -> None:
         df = pd.DataFrame(

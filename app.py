@@ -692,23 +692,54 @@ def studied_date_strings(df: pd.DataFrame) -> set[str]:
     return dates
 
 
+def normalized_studied_dates(studied_dates: set[str]) -> list[date]:
+    dates: list[date] = []
+    for value in studied_dates:
+        try:
+            dates.append(date.fromisoformat(str(value)[:10]))
+        except ValueError:
+            continue
+    return sorted(set(dates))
+
+
 def consecutive_learning_days(studied_dates: set[str], today_value: str | None = None) -> int:
-    if not studied_dates:
+    normalized_dates = set(normalized_studied_dates(studied_dates))
+    if not normalized_dates:
         return 0
     current = date.fromisoformat(today_value or today())
-    if current.isoformat() not in studied_dates:
+    if current not in normalized_dates:
         yesterday = current - timedelta(days=1)
-        if yesterday.isoformat() not in studied_dates:
+        if yesterday not in normalized_dates:
             return 0
         current = yesterday
     streak = 0
-    while current.isoformat() in studied_dates:
+    while current in normalized_dates:
         streak += 1
         current -= timedelta(days=1)
     return streak
 
 
-def dashboard_stats(df: pd.DataFrame, events: pd.DataFrame | None = None, today_value: str | None = None, daily_goal: int = DEFAULT_DAILY_GOAL) -> dict[str, int | float | bool]:
+def longest_learning_streak(studied_dates: set[str]) -> int:
+    dates = normalized_studied_dates(studied_dates)
+    if not dates:
+        return 0
+    longest = 1
+    current = 1
+    for previous, current_date in zip(dates, dates[1:]):
+        if current_date == previous + timedelta(days=1):
+            current += 1
+        else:
+            longest = max(longest, current)
+            current = 1
+    return max(longest, current)
+
+
+def latest_learning_date(studied_dates: set[str]) -> str:
+    dates = normalized_studied_dates(studied_dates)
+    return dates[-1].isoformat() if dates else "-"
+
+
+def dashboard_stats(df: pd.DataFrame, events: pd.DataFrame | None = None, today_value: str | None = None, daily_goal: int = DEFAULT_DAILY_GOAL) -> dict[str, object]:
     work = with_scores(normalize_df(df))
     event_log = normalize_study_events(events) if events is not None else pd.DataFrame(columns=STUDY_EVENT_COLUMNS)
     has_event_log = not event_log.empty
@@ -747,6 +778,8 @@ def dashboard_stats(df: pd.DataFrame, events: pd.DataFrame | None = None, today_
         "new_count": new_count,
         "mastered_count": mastered_count,
         "streak": consecutive_learning_days(studied_dates, today_text),
+        "longest_streak": longest_learning_streak(studied_dates),
+        "last_learning_date": latest_learning_date(studied_dates),
         "event_log_available": has_event_log,
     }
 
@@ -786,11 +819,11 @@ def recent_wrong_word_ranking(events: pd.DataFrame, today_value: str | None = No
     return ranking[["word", "wrong_count", "last_wrong_on"]]
 
 
-def daily_goal_achieved(stats: dict[str, int | float | bool]) -> bool:
+def daily_goal_achieved(stats: dict[str, object]) -> bool:
     return int(stats.get("today_count", 0)) >= int(stats.get("daily_goal", DEFAULT_DAILY_GOAL))
 
 
-def daily_goal_message(stats: dict[str, int | float | bool]) -> str:
+def daily_goal_message(stats: dict[str, object]) -> str:
     return f"今日の目標達成: {int(stats['today_count'])} / {int(stats['daily_goal'])}回"
 
 
@@ -1194,7 +1227,7 @@ def dashboard_screen(df: pd.DataFrame) -> pd.DataFrame:
           {dashboard_metric("総単語数", f"{stats['total_words']}語", "登録済み")}
           {dashboard_metric("今日の学習", f"{stats['today_count']}回", today_note)}
           {dashboard_metric("正解率", f"{accuracy_percent}%", f"正解 {stats['total_correct']} / 不正解 {stats['total_wrong']}")}
-          {dashboard_metric("連続学習", f"{stats['streak']}日", "記録上の連続日数")}
+          {dashboard_metric("連続学習", f"{stats['streak']}日", f"最長 {stats['longest_streak']}日 / 最終 {stats['last_learning_date']}")}
           {dashboard_metric("苦手", f"{stats['weak_count']}語", f"全{stats['total_words']}語を評価")}
           {dashboard_metric("定着", f"{stats['mastered_count']}語", "正解3回以上")}
         </div>
