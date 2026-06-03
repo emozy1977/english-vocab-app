@@ -1166,6 +1166,24 @@ def cloze_examples_for_row(row) -> list[dict[str, str]]:
     return cloze_examples_for_values(row)
 
 
+def select_least_seen_variant_index(word_id: int, variants: list[dict[str, str]], counts: dict) -> tuple[int, dict]:
+    if not variants:
+        return 0, counts
+    word_key = str(int(word_id))
+    raw_word_counts = counts.get(word_key, {})
+    if not isinstance(raw_word_counts, dict):
+        raw_word_counts = {}
+    word_counts = {
+        str(index): int(raw_word_counts.get(str(index), 0) or 0)
+        for index in range(len(variants))
+    }
+    variant_index = min(range(len(variants)), key=lambda index: (word_counts.get(str(index), 0), index))
+    word_counts[str(variant_index)] = word_counts.get(str(variant_index), 0) + 1
+    updated_counts = dict(counts)
+    updated_counts[word_key] = word_counts
+    return variant_index, updated_counts
+
+
 def word_forms_for_blank(word: object) -> list[str]:
     base = str(word).strip().lower()
     if not base:
@@ -1471,12 +1489,8 @@ def quiz_screen(df: pd.DataFrame, mode: str) -> pd.DataFrame:
     else:
         variants = cloze_examples_for_row(row)
         if st.session_state.get(variant_key, {}).get("id") != int(row["id"]):
-            variant_counts = {
-                int(key): int(value)
-                for key, value in st.session_state.get(variant_counts_key, {}).items()
-            }
-            variant_index = variant_counts.get(int(row["id"]), 0) % max(len(variants), 1)
-            variant_counts[int(row["id"])] = variant_index + 1
+            variant_counts = dict(st.session_state.get(variant_counts_key, {}))
+            variant_index, variant_counts = select_least_seen_variant_index(int(row["id"]), variants, variant_counts)
             st.session_state[variant_counts_key] = variant_counts
             st.session_state[variant_key] = {"id": int(row["id"]), "index": variant_index}
         variant_index = int(st.session_state.get(variant_key, {}).get("index", 0)) % max(len(variants), 1)

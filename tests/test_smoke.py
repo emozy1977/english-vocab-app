@@ -150,6 +150,33 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(len(parsed), 5)
         self.assertEqual(parsed[0]["ja"], "彼女はプロジェクトを管理します。")
 
+    def test_select_least_seen_variant_index_prioritizes_fewer_appearances(self) -> None:
+        variants = [
+            {"en": "We manage the roadmap.", "ja": ""},
+            {"en": "She manages the sprint.", "ja": ""},
+            {"en": "The project was managed well.", "ja": ""},
+        ]
+        counts = {"1": {"0": 2, "1": 0, "2": 1}}
+
+        index, updated = app.select_least_seen_variant_index(1, variants, counts)
+
+        self.assertEqual(index, 1)
+        self.assertEqual(updated["1"]["1"], 1)
+
+    def test_select_least_seen_variant_index_rotates_evenly(self) -> None:
+        variants = [
+            {"en": "We manage the roadmap.", "ja": ""},
+            {"en": "She manages the sprint.", "ja": ""},
+            {"en": "The project was managed well.", "ja": ""},
+        ]
+        counts: dict[str, dict[str, int]] = {}
+        selected: list[int] = []
+        for _ in range(6):
+            index, counts = app.select_least_seen_variant_index(1, variants, counts)
+            selected.append(index)
+
+        self.assertEqual(selected, [0, 1, 2, 0, 1, 2])
+
     def test_answer_diff_html_highlights_spelling_mistakes(self) -> None:
         html = app.answer_diff_html("implement", "implment")
 
