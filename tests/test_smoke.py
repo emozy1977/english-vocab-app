@@ -172,6 +172,7 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(app.DEFAULT_TIMEZONE, "Asia/Tokyo")
 
     def test_tts_defaults_use_british_native_speed(self) -> None:
+        self.assertEqual(app.DEFAULT_TTS_VOICE, "marin")
         self.assertEqual(app.DEFAULT_TTS_ACCENT, "british")
         self.assertEqual(app.DEFAULT_TTS_SPEED, 1.0)
         self.assertIn("British English", app.DEFAULT_TTS_INSTRUCTIONS)
@@ -183,13 +184,13 @@ class AppSmokeTests(unittest.TestCase):
         path = app.tts_cache_path(
             "The team will implement it.",
             "gpt-4o-mini-tts",
-            "nova",
+            "marin",
             "british",
             1.0,
             app.DEFAULT_TTS_INSTRUCTIONS,
         )
 
-        self.assertTrue(path.startswith("gpt-4o-mini-tts/nova/british/"))
+        self.assertTrue(path.startswith("gpt-4o-mini-tts/marin/british/"))
         self.assertTrue(path.endswith(".mp3"))
         self.assertNotIn("The team", path)
 
@@ -225,7 +226,7 @@ class AppSmokeTests(unittest.TestCase):
         paths = app.expected_tts_cache_paths(
             app.normalize_df(df),
             "gpt-4o-mini-tts",
-            "nova",
+            "marin",
             "british",
             1.0,
             app.DEFAULT_TTS_INSTRUCTIONS,
