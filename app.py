@@ -28,6 +28,13 @@ SUPABASE_TTS_BUCKET = "tts-audio"
 DEFAULT_AI_MODEL = "gpt-5.4-mini"
 DEFAULT_TTS_MODEL = "gpt-4o-mini-tts"
 DEFAULT_TTS_VOICE = "nova"
+DEFAULT_TTS_ACCENT = "british"
+DEFAULT_TTS_SPEED = 1.0
+DEFAULT_TTS_INSTRUCTIONS = (
+    "Speak at a natural native-speaker pace in clear British English. "
+    "Use a natural British accent suitable for English listening practice. "
+    "Keep the pronunciation crisp, conversational, and easy to shadow."
+)
 DEFAULT_TIMEZONE = "Asia/Tokyo"
 LOW_FREQUENCY_GAP = 20
 CLOZE_EXAMPLE_COUNT = 5
@@ -333,15 +340,34 @@ def answer_diff_html(expected: object, actual: object) -> str:
     return "".join(pieces)
 
 
-def tts_cache_key(text: object, model: str, voice: str) -> str:
-    source = f"{model}|{voice}|{str(text).strip()}".encode("utf-8")
+def tts_accent() -> str:
+    return config("OPENAI_TTS_ACCENT", DEFAULT_TTS_ACCENT).lower()
+
+
+def tts_speed() -> float:
+    raw_speed = config("OPENAI_TTS_SPEED", str(DEFAULT_TTS_SPEED))
+    try:
+        speed = float(raw_speed)
+    except ValueError:
+        return DEFAULT_TTS_SPEED
+    return speed if speed > 0 else DEFAULT_TTS_SPEED
+
+
+def tts_instructions() -> str:
+    return config("OPENAI_TTS_INSTRUCTIONS", DEFAULT_TTS_INSTRUCTIONS)
+
+
+def tts_cache_key(text: object, model: str, voice: str, accent: str, speed: float, instructions: str) -> str:
+    instructions_digest = hashlib.sha256(instructions.strip().encode("utf-8")).hexdigest()
+    source = f"{model}|{voice}|{accent}|{speed:.2f}|{instructions_digest}|{str(text).strip()}".encode("utf-8")
     return hashlib.sha256(source).hexdigest()
 
 
-def tts_cache_path(text: object, model: str, voice: str) -> str:
+def tts_cache_path(text: object, model: str, voice: str, accent: str, speed: float, instructions: str) -> str:
     safe_model = re.sub(r"[^a-zA-Z0-9_.-]", "_", model)
     safe_voice = re.sub(r"[^a-zA-Z0-9_.-]", "_", voice)
-    return f"{safe_model}/{safe_voice}/{tts_cache_key(text, model, voice)}.mp3"
+    safe_accent = re.sub(r"[^a-zA-Z0-9_.-]", "_", accent)
+    return f"{safe_model}/{safe_voice}/{safe_accent}/{tts_cache_key(text, model, voice, accent, speed, instructions)}.mp3"
 
 
 def read_tts_cache(path: str) -> bytes | None:
@@ -354,7 +380,7 @@ def read_tts_cache(path: str) -> bytes | None:
     return local_path.read_bytes() if local_path.exists() else None
 
 
-def expected_tts_cache_paths(df: pd.DataFrame, model: str, voice: str) -> pd.DataFrame:
+def expected_tts_cache_paths(df: pd.DataFrame, model: str, voice: str, accent: str, speed: float, instructions: str) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     seen: set[str] = set()
     for row in normalize_df(df).itertuples():
@@ -362,7 +388,7 @@ def expected_tts_cache_paths(df: pd.DataFrame, model: str, voice: str) -> pd.Dat
             text = str(example.get("en", "")).strip()
             if not text:
                 continue
-            path = tts_cache_path(text, model, voice)
+            path = tts_cache_path(text, model, voice, accent, speed, instructions)
             if path in seen:
                 continue
             seen.add(path)
@@ -386,10 +412,11 @@ def list_local_tts_cache_paths() -> dict[str, int]:
     return paths
 
 
-def list_supabase_tts_cache_paths(model: str, voice: str) -> dict[str, int]:
+def list_supabase_tts_cache_paths(model: str, voice: str, accent: str) -> dict[str, int]:
     safe_model = re.sub(r"[^a-zA-Z0-9_.-]", "_", model)
     safe_voice = re.sub(r"[^a-zA-Z0-9_.-]", "_", voice)
-    prefix = f"{safe_model}/{safe_voice}"
+    safe_accent = re.sub(r"[^a-zA-Z0-9_.-]", "_", accent)
+    prefix = f"{safe_model}/{safe_voice}/{safe_accent}"
     try:
         items = supabase_client().storage.from_(SUPABASE_TTS_BUCKET).list(prefix, {"limit": 1000})
     except Exception:
@@ -408,8 +435,11 @@ def list_supabase_tts_cache_paths(model: str, voice: str) -> dict[str, int]:
 def tts_cache_inventory(df: pd.DataFrame) -> tuple[pd.DataFrame, int, int]:
     model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
     voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
-    expected = expected_tts_cache_paths(df, model, voice)
-    cached_paths = list_supabase_tts_cache_paths(model, voice) if supabase_enabled() else list_local_tts_cache_paths()
+    accent = tts_accent()
+    speed = tts_speed()
+    instructions = tts_instructions()
+    expected = expected_tts_cache_paths(df, model, voice, accent, speed, instructions)
+    cached_paths = list_supabase_tts_cache_paths(model, voice, accent) if supabase_enabled() else list_local_tts_cache_paths()
     if expected.empty:
         return expected.assign(cached=[], size=[]), 0, len(cached_paths)
     inventory = expected.copy()
@@ -447,7 +477,7 @@ def ensure_tts_storage_ready() -> None:
             raise RuntimeError("Supabase Storageに tts-audio バケットを作成できませんでした。SupabaseのStorage画面で tts-audio という非公開バケットを作成してください。") from exc
 
 
-def generate_tts_audio(text: object, model: str, voice: str) -> bytes:
+def generate_tts_audio(text: object, model: str, voice: str, instructions: str, speed: float) -> bytes:
     api_key = config("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY が未設定のため、高品質音声を生成できません。")
@@ -457,9 +487,9 @@ def generate_tts_audio(text: object, model: str, voice: str) -> bytes:
         model=model,
         voice=voice,
         input=str(text).strip(),
-        instructions=config("OPENAI_TTS_INSTRUCTIONS", "Speak naturally and clearly in American English for a listening practice exercise."),
+        instructions=instructions,
         response_format="mp3",
-        speed=0.92,
+        speed=speed,
     )
     return bytes(response.content if hasattr(response, "content") else response.read())
 
@@ -467,12 +497,15 @@ def generate_tts_audio(text: object, model: str, voice: str) -> bytes:
 def get_or_create_tts_audio(text: object) -> tuple[bytes, str]:
     model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
     voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
-    path = tts_cache_path(text, model, voice)
+    accent = tts_accent()
+    speed = tts_speed()
+    instructions = tts_instructions()
+    path = tts_cache_path(text, model, voice, accent, speed, instructions)
     cached = read_tts_cache(path)
     if cached:
         return cached, "保存済み"
     ensure_tts_storage_ready()
-    audio = generate_tts_audio(text, model, voice)
+    audio = generate_tts_audio(text, model, voice, instructions, speed)
     write_tts_cache(path, audio)
     return audio, "新規生成"
 
@@ -1557,9 +1590,11 @@ def render_tts_cache_status(df: pd.DataFrame) -> None:
     storage_label = f"Supabase Storage: {SUPABASE_TTS_BUCKET}" if supabase_enabled() else f"ローカル: {AUDIO_CACHE_DIR}"
     model = config("OPENAI_TTS_MODEL", DEFAULT_TTS_MODEL)
     voice = config("OPENAI_TTS_VOICE", DEFAULT_TTS_VOICE)
+    accent = tts_accent()
+    speed = tts_speed()
     with st.expander("高品質音声キャッシュ"):
         st.write("聞き取り問題で使う高品質音声が保存済みか確認できます。保存済みの英文は、次回以降OpenAI APIを呼ばずに再利用します。")
-        st.caption(f"保存先: {storage_label} / モデル: {model} / Voice: {voice}")
+        st.caption(f"保存先: {storage_label} / モデル: {model} / Voice: {voice} / Accent: {accent} / Speed: {speed:.2f}")
         inventory, cached_count, stored_file_count = tts_cache_inventory(df)
         expected_count = len(inventory)
         c1, c2, c3 = st.columns(3)

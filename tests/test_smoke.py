@@ -170,10 +170,22 @@ class AppSmokeTests(unittest.TestCase):
     def test_today_uses_japan_timezone_by_default(self) -> None:
         self.assertEqual(app.DEFAULT_TIMEZONE, "Asia/Tokyo")
 
-    def test_tts_cache_path_is_stable_and_safe(self) -> None:
-        path = app.tts_cache_path("The team will implement it.", "gpt-4o-mini-tts", "nova")
+    def test_tts_defaults_use_british_native_speed(self) -> None:
+        self.assertEqual(app.DEFAULT_TTS_ACCENT, "british")
+        self.assertEqual(app.DEFAULT_TTS_SPEED, 1.0)
+        self.assertIn("British English", app.DEFAULT_TTS_INSTRUCTIONS)
 
-        self.assertTrue(path.startswith("gpt-4o-mini-tts/nova/"))
+    def test_tts_cache_path_is_stable_and_safe(self) -> None:
+        path = app.tts_cache_path(
+            "The team will implement it.",
+            "gpt-4o-mini-tts",
+            "nova",
+            "british",
+            1.0,
+            app.DEFAULT_TTS_INSTRUCTIONS,
+        )
+
+        self.assertTrue(path.startswith("gpt-4o-mini-tts/nova/british/"))
         self.assertTrue(path.endswith(".mp3"))
         self.assertNotIn("The team", path)
 
@@ -206,7 +218,14 @@ class AppSmokeTests(unittest.TestCase):
             columns=app.COLUMNS,
         )
 
-        paths = app.expected_tts_cache_paths(app.normalize_df(df), "gpt-4o-mini-tts", "nova")
+        paths = app.expected_tts_cache_paths(
+            app.normalize_df(df),
+            "gpt-4o-mini-tts",
+            "nova",
+            "british",
+            1.0,
+            app.DEFAULT_TTS_INSTRUCTIONS,
+        )
 
         self.assertEqual(paths["text"].tolist(), ["She manages the project.", "We manage the release plan."])
         self.assertTrue(paths["path"].str.endswith(".mp3").all())
