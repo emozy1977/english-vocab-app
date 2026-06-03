@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -174,6 +175,9 @@ class AppSmokeTests(unittest.TestCase):
         self.assertEqual(app.DEFAULT_TTS_ACCENT, "british")
         self.assertEqual(app.DEFAULT_TTS_SPEED, 1.0)
         self.assertIn("British English", app.DEFAULT_TTS_INSTRUCTIONS)
+
+    def test_css_hides_streamlit_input_instructions(self) -> None:
+        self.assertIn('data-testid="InputInstructions"', inspect.getsource(app.css))
 
     def test_tts_cache_path_is_stable_and_safe(self) -> None:
         path = app.tts_cache_path(

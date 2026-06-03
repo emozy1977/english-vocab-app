@@ -1975,6 +1975,7 @@ def css() -> None:
       .quiz-prompt { color:#111827; font-size:1.25rem; font-weight:800; line-height:1.35; overflow-wrap:anywhere; }
       input, textarea, select { background:#fff!important; color:#172033!important; -webkit-text-fill-color:#172033!important; caret-color:#172033!important; border-color:#cbd5e1!important; font-size:16px!important; }
       input::placeholder, textarea::placeholder { color:#8a94a6!important; -webkit-text-fill-color:#8a94a6!important; opacity:1!important; }
+      div[data-testid="InputInstructions"] { display:none!important; }
       label, label *, div[data-testid="stWidgetLabel"], div[data-testid="stWidgetLabel"] * { color:#172033!important; }
       div.stButton > button, div[data-testid="stFormSubmitButton"] button { background:#fff!important; border:1px solid #cbd5e1!important; border-radius:8px; color:#172033!important; min-height:46px; font-weight:800; width:100%; }
       button[data-testid="stBaseButton-primary"], button[data-testid="stBaseButton-primaryFormSubmit"] { background:#2f6fed!important; border-color:#2f6fed!important; color:#fff!important; }
